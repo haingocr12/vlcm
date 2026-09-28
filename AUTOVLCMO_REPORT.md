@@ -5,7 +5,7 @@ Bộ này **khác hẳn** bộ `vlcmauto.exe / vlcmcliet.exe / game.pak` trong [
 | File | Kích thước | SHA-256 | Loại |
 |---|---|---|---|
 | `AutoVLCMO.exe` | 5 922 936 | `b3301ec0…ab401a4a` | PE32 GUI, MFC/C++ (MSVC), build 2026-09-24, v1.0.7.2 |
-| `MctHost.exe` | 5 014 536 | `6b24fa7d…31350686` | PE32 GUI, **pack VMProtect**, build 2026-06-26 |
+| `MctHost.exe` | 5 014 536 | `6b24fa7d…42c34986` | PE32 GUI, **pack VMProtect** (đã dump), build 2026-06-26 |
 | `Datas.rar` | 10 089 | `9ce8ae66…31350686` | RAR5, 13 file XML cấu hình (2026-04-21) |
 
 Cả hai file .exe đều có **chữ ký số EV hợp lệ** (GlobalSign GCC R45 EV CodeSigning CA 2020) cấp cho
@@ -24,7 +24,7 @@ AutoVLCMO.exe (giao diện + bộ điều khiển, "Mobot Framework")
  ├─ Chế độ giả lập: Nox / MEmu / BlueStacks 5 / LDPlayer
  │     └─ điều khiển qua ADB, đẩy scrcpy-server.jar để lấy hình + gửi thao tác
  ├─ Chế độ PC:  GameHost\MctHost.exe --bootdir . -instance:<GUID>
- │     └─ host Flash (Flash.ocx, Engine.dat, register_flash_new.bat), cửa sổ "Mộng Chí Tôn"
+ │     └─ tự login Tepaylink, nạp Adobe AIR + client game chính thức + ember.dll, cửa sổ "Mộng Chí Tôn"
  └─ MobotRemote: WebSocket /ws/desktop tới server của hãng (xem mục 2.5)
 ```
 
@@ -67,7 +67,7 @@ Có tab **Thống kê** lưu vào SQLite `Statistics.db` (bảng `thongke`: serv
 
 ### 2.3 Chế độ PC: MctHost
 - Chạy `"%s\GameHost\MctHost.exe" --bootdir . -instance:{GUID}`. Cửa sổ game có tên **"Mộng Chí Tôn"**.
-- Liên quan: `Flash.ocx`, `Engine.dat`, `register_flash_new.bat`, `manifest.json` (danh sách `files` để kiểm tra hoặc cập nhật).
+- Liên quan: `Flash.ocx`, `Engine.dat`, `register_flash_new.bat`, `manifest.json` (danh sách `files` để kiểm tra hoặc cập nhật). Các chuỗi này có trong AutoVLCMO, nhưng MctHost bản này dùng Adobe AIR chứ không dùng Flash.ocx (xem mục 3), nên có thể là phần sót lại từ bản cũ.
 - Tự tìm và đóng hộp thoại lỗi `#32770` của MctHost, và kill `UnityCrashHandler64.exe`.
 
 ### 2.4 Bản quyền / VIP
@@ -96,17 +96,38 @@ libcurl (có SOCKS5, NTLM, LDAP), zlib/minizip, TinyXML2, OpenXLSX (xuất Excel
 
 ## 3. MctHost.exe
 
-- **Pack bằng VMProtect 3.x**: section `.text`, `.rdata`, `.data`, `.23e` có kích thước thô bằng 0 (được giải nén lúc chạy). Code nằm trong `.kG0` (4,9 MB, entropy 7.93), entry point `0x6e3f7d` cũng ở đó. Có 3 bảng import KERNEL32. Không còn chuỗi rõ nào ngoài import và chứng chỉ, nên **không phân tích tĩnh được logic**.
-- Chỉ đọc được qua import:
-  - `WinHttp*` (kể cả `WinHttpCrackUrl`, `ReadData`): tải dữ liệu qua HTTP(S).
-  - `SuspendThread`/`GetThreadContext`/`SetThreadContext`/`FlushInstructionCache`/`VirtualProtect` + `Thread32First/Next`: bộ **hook code trong chính tiến trình** (kiểu Detours/MinHook), nhiều khả năng dùng để hook Flash OCX.
-  - `SetEnvironmentVariableW`, `SetCurrentDirectoryW`, `LoadLibraryW`: nạp Flash/`Engine.dat` theo `--bootdir`.
-  - `CreateToolhelp32Snapshot`, `GetClassNameW`, `InternalGetWindowText`: liệt kê tiến trình/cửa sổ (một phần là chống debug của VMProtect).
-- Manifest `asInvoker`. Chỉ có icon, không có version info.
+### 3.1 Vỏ bọc
+**Pack bằng VMProtect 3.x**: section `.text`, `.rdata`, `.data`, `.23e` có kích thước thô bằng 0, code nén nằm trong `.kG0` (4,9 MB, entropy 7.93). Phân tích tĩnh không đọc được gì ngoài import.
 
-Nói ngắn gọn, đây là **trình host game PC do Mobot tự viết** (tương tự `vlcmcliet.exe` ở bộ cũ nhưng bị bảo vệ mạnh hơn nhiều). Muốn biết chính xác nó làm gì thì phải phân tích động (chạy trong máy ảo và dump bộ nhớ sau khi VMProtect giải nén).
+### 3.2 Dump bộ nhớ (phân tích động)
+Container không có KVM nên không dựng được máy ảo Windows. Mình chạy file bằng **Wine 9.0 + Xvfb** ngay trong container dùng một lần này, rồi đọc `/proc/<pid>/mem` vùng `0x400000–0xB82000` ([`tools/dump_wine.py`](tools/dump_wine.py)).
+- Sau **0,5 giây**, VMProtect đã giải nén xong: `.text` 89 % byte khác 0, `.rdata` có đủ chuỗi. VMProtect **không chặn Wine**.
+- Tiến trình tự thoát (rc=254) vì thiếu tham số `--login`/`--no-login` hoặc thiếu Adobe AIR. Nhưng lúc đó code đã được giải nén nên vẫn đọc được.
+- Bản dump **không đưa vào repo**.
 
----
+### 3.3 MctHost thật sự làm gì
+Đây **không phải host Flash OCX** như mình đoán ở bản trước. Nó là **launcher nạp client Adobe AIR chính thức của game "Mộng Chí Tôn" vào trong chính tiến trình**:
+
+```
+Usage: MctHost.exe (--login user:pass@server | --no-login)
+       [--gamedir <path> | --bootdir <phase4_bundle>] [--ember <dll>] [--no-ember]
+       [--runtime <dir>] [--log-dir <path>]
+```
+
+1. **Tự đăng nhập Tepaylink** (`DoLoginTepayLink`), UA giả `Firefox/34.0`:
+   - step1 `POST https://login-vlcm.tpl.vn/api/v2/User/GetToken` với `{"password":…,"username":…,"device":"Windows"}` → `token`
+   - step2 `POST …/api/v2/User/Login` với `{"username":…,"device":"Windows","token":…}` → `sessionId`
+   - step3 `GET …/api/gamepage/gamepage.asp?ServerID=<sv>&SessionId=<sid>&Device=windows` → tách `embedSWF("…")` và khối `parameters = {…}` ra URL SWF và flashvars
+   - Kết quả được truyền vào game qua biến môi trường `EMBER2_SWF_URL`, `EMBER2_FLASHVARS`, `EMBER2_LOG_DIR`.
+2. **Nạp Adobe AIR trong tiến trình**: `LoadLibraryW("Adobe AIR\Versions\1.0\Adobe AIR.dll")` rồi gọi thẳng `CaptiveAppEntryWinMain`, với thư mục game mặc định `D:\Games\MongChiTonClient` (`--gamedir`) hoặc bundle đã sửa (`--bootdir`, "phase4", có `boot.swf`).
+3. **Nạp `ember.dll`**: đây là DLL/ANE (AIR Native Extension) của Mobot, chạy bên trong game. Nhiều khả năng đây chính là phần bot. **File này không có trong bộ tải lên.**
+4. **Bẻ giới hạn 1 cửa sổ game** bằng **MinHook**: hook `CreateMutexA`/`CreateFileMappingA` để đổi tên `MacromediaMutexOmega`/`MacromediaFMOmega` thành `…_pid<N>` khi phát hiện MctHost khác đang chạy. Nhờ vậy chạy được nhiều client cùng lúc.
+5. **Đổi giao diện cửa sổ**: hook `CreateWindowExW` và chờ class `ApolloRuntimeContentWindow` để đặt tiêu đề, icon và nút riêng ("skin").
+6. Ghi log ra `<log-dir>/host.log`. Log **không ghi mật khẩu** (chỉ ghi user/server và độ dài body). Nhưng log **có ghi `token`, `sessionId`, flashvars và 500 ký tự đầu của phản hồi server**. Ai đọc được `host.log` là có thể dùng lại phiên đăng nhập.
+
+Mật khẩu **chỉ được gửi tới `login-vlcm.tpl.vn`** (cổng chính thức). Mình không thấy URL nào khác trong bản dump.
+
+Lưu ý: AutoVLCMO gọi `"MctHost.exe" --bootdir . -instance:{GUID}`, nhưng trong bản này MctHost coi `-instance:` là tham số lạ (`WARN: ignoring unknown arg`) và bắt buộc phải có `--login`. Vậy nên hai file có thể lệch phiên bản, hoặc AutoVLCMO còn thêm `--login` ở chỗ khác.
 
 ## 4. Datas.rar: dữ liệu kịch bản
 
@@ -129,7 +150,8 @@ Không file .exe nào ở đây tham chiếu tên các file XML này. Chúng đ�
 |---|---|
 | 🟠 Trung bình | **MobotRemote**: server của hãng có thể xem màn hình và gửi thao tác vào giả lập/game, kèm mã máy (HWID). Chưa xác định được lúc nào module này hoạt động. |
 | 🟠 Trung bình | **Vá `HD-Player.exe` của BlueStacks trên đĩa** và bật ADB. Làm hỏng chữ ký số, và có thể gây lỗi khi cập nhật BlueStacks. |
-| 🟠 Trung bình | **MctHost bị VMProtect**, logic chính nằm trong `Mobot.mpk` tải riêng. Người dùng không kiểm chứng được code thật sự chạy. |
+| 🟠 Trung bình | Logic bot nằm trong `Mobot.mpk` và `ember.dll` (không có trong bộ tải lên), người dùng không kiểm chứng được. MctHost bị VMProtect nhưng đã dump được: nó chỉ đăng nhập qua cổng chính thức, nạp AIR và bẻ giới hạn nhiều cửa sổ. |
+| 🟡 Thấp | `host.log` của MctHost ghi **token và sessionId Tepaylink** dạng rõ. |
 | 🟡 Thấp | Ping `whos.amung.us` (theo dõi số người dùng), ghi đè command line tiến trình con, cắt kết nối TCP. Đều là tính năng phục vụ auto, nhưng là hành vi "nhạy cảm". |
 | 🟢 | Có chữ ký EV của một công ty có đăng ký thật tại VN. Không thấy thêm ngoại lệ Windows Defender (khác bộ cũ), không thấy keylogger hay đào coin. Chạy giả lập bằng token Medium IL là kỹ thuật **hạ quyền**, không phải leo thang quyền. |
 | ⚖️ | Vẫn là **bot game** (farm nhiều acc, gom đồ bằng giao dịch, auto PK), vi phạm điều khoản của nhà phát hành và có nguy cơ bị khóa acc. |
@@ -145,4 +167,4 @@ Không file .exe nào ở đây tham chiếu tên các file XML này. Chúng đ�
 - Trích chuỗi ASCII và UTF-16LE (gồm cả tiếng Việt có dấu)
 - `capstone`: tìm xref tới chuỗi/IAT rồi đọc các hàm `0x63d78d`, `0x63e8e0`, `0x63fe36`, `0x6409a1`, `0x640f36`, `0x645900`, `0x64c3eb`
 - Tách APK nhúng (scrcpy-server) bằng cách đọc End-Of-Central-Directory của ZIP
-- **Không chạy** file .exe nào. MctHost chưa được unpack.
+- MctHost: chạy bằng Wine 9.0 + Xvfb trong container, dump `/proc/<pid>/mem` sau 0,5 giây ([`tools/dump_wine.py`](tools/dump_wine.py)). AutoVLCMO **không chạy**.
