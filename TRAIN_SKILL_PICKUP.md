@@ -136,7 +136,7 @@ return best
 ```
 `method_170(needle, c)` so tên `c.headFace.nickName` với từ khóa như sau:
 - Bỏ khoảng trắng/tab ở đầu và cuối, đổi cả hai về chữ thường (`toLowerCase`), rồi khớp **chuỗi con** (`itemLow.indexOf(needleLow) >= 0`).
-- Từ khóa đặt trong `[...]` được coi là **nhóm đặc biệt**. Ví dụ `[Mảnh Trận Pháp]` khớp regex `^Mảnh\s(Hấp Tinh Đại Pháp|Hóa Công Đại Pháp|…|Hồi Phục)$` gồm khoảng 70 tên mảnh trận pháp/bí kíp. Người dùng chỉ cần gõ một từ khóa là nhặt được cả nhóm.
+- Từ khóa đặt trong `[...]` được bỏ ngoặc rồi so như trên. Một số từ khóa là **nhóm đặc biệt** khớp theo regex, ví dụ `[Mảnh Bí Kíp]` khớp khoảng 70 tên mảnh bí kíp. Danh sách đầy đủ ở `PACKETS_AND_ITEMS.md`, mục 2.
 
 ### 3.3 Đi tới và nhặt: `method_330()` và phần đầu của `method_192a`
 ```
