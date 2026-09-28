@@ -183,11 +183,30 @@ Mình decompile cả 99 file bằng **unluac** (không file nào lỗi, ~40 000 
 
 **MVM là gì:** `run_vm` (`0x106450e0`) đọc MVMP (`0x10647e20`: bảng hằng có tag, bảng chuỗi, hàm con đệ quy), rồi dựng một **Lua proto giả chỉ chứa lệnh `RETURN`**. Proto này gắn con trỏ tới cấu trúc MVM vào trường tuỳ biến `+0x50` và đặt cờ `+0x4c`. Lua VM trong ember đã bị sửa để khi gặp cờ đó thì chuyển sang **trình thông dịch riêng** (`0x10648d10`, **46 KB trong một hàm**, 21 bảng nhảy). Hằng chuỗi trong MVMP **được mã hoá** và chỉ giải mã lúc chạy.
 
-=> **Chưa đọc được logic chi tiết của các chức năng**: URL server, cách tính toán, gói tin gửi đi đều nằm trong phần MVM. Muốn đọc thì phải dịch ngược toàn bộ tập lệnh của trình thông dịch 46 KB này (viết devirtualizer). Đó là một dự án riêng, tốn nhiều ngày.
+=> Chưa có devirtualizer nên **chưa đọc được luồng lệnh** (thuật toán, thứ tự gọi). Nhưng **bảng chuỗi thì đã giải được toàn bộ** (mục 5.5).
 
-Những gì biết chắc, không cần devirtualize:
-- Logic bot chạy **bên trong tiến trình game**, thao tác trực tiếp đối tượng AS3 (kể cả private) và hook hàm game. Về bản chất giống `game.pak` của bộ cũ, nhưng giấu kỹ hơn nhiều.
-- Script có sẵn **HTTP client (lcurl) và toàn quyền `os`/`io`**. Không thể loại trừ việc tool gửi dữ liệu ra ngoài hoặc chạy lệnh, vì phần gọi nằm trong MVM đã mã hoá.
+### 5.5 Giải mã chuỗi trong MVM
+Hàm giải mã chuỗi nằm ở `0x106476c0`. Nó được gọi lười (lazy) từ 15 chỗ trong trình thông dịch, và kết quả được cache lại. Thuật toán:
+
+```
+seed = f20 - fmod(nK*7 + f10*13 + (f14 != 0)*31, 2^20)      (0x10648950 chỉnh seed)
+x    = fmod(seed*65537 + idx*8191, 2^31)                     (idx tính từ 1)
+mỗi byte i:  x = LCG(x); a = floor(x/2^16) & 255
+             x = LCG(x); c = floor(x/2^8)  & 255
+             k = (a + 7 + 7i + 3c) & 255  (0 -> 0xAD);   out = in XOR k
+LCG(x) = fmod(x*1103515245 + 12345, 2^31)   (hằng số rand() của glibc, tính bằng double)
+```
+`f20`, `f10`, `f14`, `nK` đều nằm ngay trong header của từng hàm MVMP, nên **không có khóa bí mật**. Công cụ: [`tools/mvmp_strings.py`](tools/mvmp_strings.py) (kèm parser bố cục MVMP đầy đủ).
+
+Kết quả: giải được cả **74/74 file MVMP**, tổng **24 082 chuỗi (5 449 chuỗi khác nhau)**, tất cả đều là văn bản có nghĩa. Ngoại lệ duy nhất là bảng mã TCVN3 và một ít dữ liệu nhị phân trong module lõi. Những gì đọc được:
+
+- **Máy chủ:** URL duy nhất là 3 endpoint đăng nhập chính thức `login-vlcm.tpl.vn` (`GetToken`, `Login`, `gamepage.asp`), dùng trong module đăng nhập (`user`/`pass`/`server` → `loginTepayLink` → `WebBot`). **Không có URL, IP hay tên miền lạ nào khác.**
+- **`os`/`io`:** không thấy `os.execute`, `io.popen`, `loadstring` hay `dofile` trong bảng chuỗi. `execute` chỉ là tên trường trong bảng luật tổ đội.
+- **Liên lạc với AutoVLCMO:** qua `SendBroadcastJson(MSG_GAME_RESPONSE, …)`, `SendActivityLog`, `SendGameStatus`, `SendPlayerInfo`, `HandleMessage`. Dữ liệu gửi về là vị trí, đồ trong túi, skill, bạn bè, vợ/chồng, thông tin nhân vật. Đây là để hiển thị trên giao diện auto (native `AutoAI::HandleMessage`/`OnNetworkDisconnect` trong ember).
+- **Bản quyền:** `License`, `HasValidLicense`, `UpdateLicense`, `MSG_GAME_LICENSE`, `MSG_LICENSE_SIGNATURE`, `SetAuthorizationToken`, `GetEngineTicket`. Engine chỉ chạy khi AutoVLCMO gửi xuống giấy phép có chữ ký (ember có import `CryptSignHash`/kho chứng chỉ).
+- **Can thiệp game:** gọi thẳng **61 hàm gửi gói `send_<cmd>`** của client (vd. `send_10051`, `send_50041`, `send_53739`…) và `sendMsg`. Dùng **khoảng 50 lớp AS3 `com.tgame.*`** (`TSocket`, `FacadeManager`, `Item_BackpackMediator`…), cài hook `InstallChatHook`, `InstallInviteApplyHooks`, `InstallGuildListHook`, `SetupHideHooks` (ẩn người chơi/hiệu ứng), `SetupAddBuffPipeHook`. Có AutoPK và `WMKeyDown` (giả lập phím).
+- **Quảng cáo:** 3 câu "360auto - chúc ngày mới vui vẻ!", "360auto - chúc các đại hiệp chơi game vui vẻ!" và "Tải auto tại 360auto.net nha mọi người!" được chọn ngẫu nhiên theo ngày rồi đưa qua `SendSystemChat`. Đây cũng là hàm dùng để báo "Nhặt được %s…", nên nhiều khả năng **chỉ hiện ở kênh hệ thống trên máy người dùng**, không gửi lên kênh chat chung. Tuy vậy, chưa có devirtualizer nên chưa khẳng định tuyệt đối.
+- Không thấy chuỗi nào liên quan đến né GM, captcha hay chống phát hiện.
 
 ---
 
@@ -197,7 +216,7 @@ Những gì biết chắc, không cần devirtualize:
 |---|---|
 | 🟠 Trung bình | **MobotRemote**: server của hãng có thể xem màn hình và gửi thao tác vào giả lập/game, kèm mã máy (HWID). Chưa xác định được lúc nào module này hoạt động. |
 | 🟠 Trung bình | **Vá `HD-Player.exe` của BlueStacks trên đĩa** và bật ADB. Làm hỏng chữ ký số, và có thể gây lỗi khi cập nhật BlueStacks. |
-| 🟠 Trung bình | Logic bot nằm trong **máy ảo MVM** tự chế trong `ember.dll` (chuỗi mã hoá), trong khi script có HTTP client và toàn quyền `os.execute`/`io`. Người dùng không kiểm chứng được script làm gì. MctHost bị VMProtect nhưng đã dump được: nó chỉ đăng nhập qua cổng chính thức, nạp AIR và bẻ giới hạn nhiều cửa sổ. |
+| 🟡 Thấp | Logic bot nằm trong **máy ảo MVM** tự chế trong `ember.dll`. Lua có sẵn `os`/`io` và HTTP client. **Đã giải mã toàn bộ 24 082 chuỗi**: chỉ gọi tới cổng đăng nhập chính thức, không thấy `os.execute`/`io.popen`, không có máy chủ lạ. Luồng lệnh thì chưa devirtualize. MctHost bị VMProtect nhưng đã dump được: nó chỉ đăng nhập qua cổng chính thức, nạp AIR và bẻ giới hạn nhiều cửa sổ. |
 | 🟡 Thấp | `host.log` của MctHost ghi **token và sessionId Tepaylink** dạng rõ. |
 | 🟡 Thấp | Ping `whos.amung.us` (theo dõi số người dùng), ghi đè command line tiến trình con, cắt kết nối TCP. Đều là tính năng phục vụ auto, nhưng là hành vi "nhạy cảm". |
 | 🟢 | Có chữ ký EV của một công ty có đăng ký thật tại VN. Không thấy thêm ngoại lệ Windows Defender (khác bộ cũ), không thấy keylogger hay đào coin. Chạy giả lập bằng token Medium IL là kỹ thuật **hạ quyền**, không phải leo thang quyền. |
@@ -215,4 +234,4 @@ Những gì biết chắc, không cần devirtualize:
 - `capstone`: tìm xref tới chuỗi/IAT rồi đọc các hàm `0x63d78d`, `0x63e8e0`, `0x63fe36`, `0x6409a1`, `0x640f36`, `0x645900`, `0x64c3eb`
 - Tách APK nhúng (scrcpy-server) bằng cách đọc End-Of-Central-Directory của ZIP
 - MctHost: chạy bằng Wine 9.0 + Xvfb trong container, dump `/proc/<pid>/mem` sau 0,5 giây ([`tools/dump_wine.py`](tools/dump_wine.py)). AutoVLCMO **không chạy**.
-- Mobot.mpk / ember.dll: dịch ngược hàm ghi MPK của AutoVLCMO, giải bằng [`tools/unpack_mpk.py`](tools/unpack_mpk.py); decompile Lua 5.3 bằng unluac (2023-12-24); parser Lua-constant tự viết để lấy blob `AutoAI.Deflate`; raw-inflate ra MVMP; đọc `run_vm`/parser/trình thông dịch MVM bằng capstone. Mã Lua đã decompile **không đưa vào repo**.
+- Mobot.mpk / ember.dll: dịch ngược hàm ghi MPK của AutoVLCMO, giải bằng [`tools/unpack_mpk.py`](tools/unpack_mpk.py); decompile Lua 5.3 bằng unluac (2023-12-24); parser Lua-constant tự viết để lấy blob `AutoAI.Deflate`; raw-inflate ra MVMP; đọc `run_vm`/parser/trình thông dịch MVM bằng capstone. Chuỗi MVM giải bằng [`tools/mvmp_strings.py`](tools/mvmp_strings.py) (dịch ngược `0x106476c0` và `0x10648950`). Mã Lua đã decompile và chuỗi đã giải **không đưa vào repo**.
