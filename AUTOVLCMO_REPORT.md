@@ -20,11 +20,11 @@ Thông tin phiên bản của AutoVLCMO: `CompanyName = http://360auto.vn`, `Fil
 ```
 AutoVLCMO.exe (giao diện + bộ điều khiển, "Mobot Framework")
  ├─ Settings\Accounts.json, AppConfig.json, Statistics.db (SQLite), UserData\Users.dat
- ├─ Mobot.mpk  (gói kịch bản/logic auto, KHÔNG có trong file tải lên)
+ ├─ Mobot.mpk  (gói MPK: chỉ dữ liệu JSON, xem mục 5)
  ├─ Chế độ giả lập: Nox / MEmu / BlueStacks 5 / LDPlayer
  │     └─ điều khiển qua ADB, đẩy scrcpy-server.jar để lấy hình + gửi thao tác
  ├─ Chế độ PC:  GameHost\MctHost.exe --bootdir . -instance:<GUID>
- │     └─ tự login Tepaylink, nạp Adobe AIR + client game chính thức + ember.dll, cửa sổ "Mộng Chí Tôn"
+ │     └─ tự login Tepaylink, nạp Adobe AIR + client game chính thức + ember.dll (Lua + máy ảo MVM = logic bot), cửa sổ "Mộng Chí Tôn"
  └─ MobotRemote: WebSocket /ws/desktop tới server của hãng (xem mục 2.5)
 ```
 
@@ -74,12 +74,12 @@ Có tab **Thống kê** lưu vào SQLite `Statistics.db` (bảng `thongke`: serv
 - Kích hoạt bằng **mã VIP** (`MENU_VIP_ACTIVEKEY`), mua ở `vip.360auto.vn` (`/redirect/%s?redirect_uri=/keylisting`, `/shop/%d`).
 - **Mã máy (HWID)** tạo ở hàm `0x645900`: code tự sửa (self-modifying) để gọi `CPUID` với nhiều leaf, trộn với chuỗi `twElsZQgwN` và hằng `0x19780102`.
 - Kiểm tra **giờ hệ thống** với server. Nếu giờ máy lệch thì bắt chỉnh lại, nhằm chặn việc lùi giờ để kéo dài hạn VIP.
-- Gói logic chính `Mobot.mpk` không có trong file tải lên, nên chưa phân tích được.
+- `Mobot.mpk` hoá ra chỉ chứa dữ liệu JSON; logic thật nằm trong `ember.dll` (xem mục 5).
 
 ### 2.5 ⚠️ MobotRemote: xem và điều khiển màn hình từ xa
 Có một module hoàn chỉnh `MobotRemote` (class `IScreenProvider@MobotRemote`), UA `MobotRemote/1.0` và `MobotRemote-Video/1.0`:
 
-- Mở WebSocket tới `/ws/desktop?role=app&machine=<HWID>&product=<id>&uid=<user>&sdk=<ver>` với `Authorization: Bearer <token>`. Tên máy chủ **không lộ ra dưới dạng chuỗi tĩnh** (được truyền vào lúc chạy, nhiều khả năng lấy từ server/`Mobot.mpk`).
+- Mở WebSocket tới `/ws/desktop?role=app&machine=<HWID>&product=<id>&uid=<user>&sdk=<ver>` với `Authorization: Bearer <token>`. Tên máy chủ **không lộ ra dưới dạng chuỗi tĩnh** (được truyền vào lúc chạy; không có trong `Mobot.mpk`).
 - Lệnh server gửi xuống: `scr_list`, `scr_thumb`, `scr_start`, `scr_stop`, `scr_take`, `scr_release`, **`scr_input`** (chuột, chạm, lăn, `keycode`), `scr_quality`, `scr_fit`, `launch`, `control`.
 - Auto gửi lên: danh sách giả lập, ảnh thumbnail JPEG/WebP, luồng video (Media Foundation, `mfplat.dll`), và **toàn bộ cây giao diện của auto** (`snapshot`/`delta`, `menu_click`, `cell_edit`, `commit_text`…). Có cơ chế `redact` để che một số trường.
 
@@ -120,7 +120,7 @@ Usage: MctHost.exe (--login user:pass@server | --no-login)
    - step3 `GET …/api/gamepage/gamepage.asp?ServerID=<sv>&SessionId=<sid>&Device=windows` → tách `embedSWF("…")` và khối `parameters = {…}` ra URL SWF và flashvars
    - Kết quả được truyền vào game qua biến môi trường `EMBER2_SWF_URL`, `EMBER2_FLASHVARS`, `EMBER2_LOG_DIR`.
 2. **Nạp Adobe AIR trong tiến trình**: `LoadLibraryW("Adobe AIR\Versions\1.0\Adobe AIR.dll")` rồi gọi thẳng `CaptiveAppEntryWinMain`, với thư mục game mặc định `D:\Games\MongChiTonClient` (`--gamedir`) hoặc bundle đã sửa (`--bootdir`, "phase4", có `boot.swf`).
-3. **Nạp `ember.dll`**: đây là DLL/ANE (AIR Native Extension) của Mobot, chạy bên trong game. Nhiều khả năng đây chính là phần bot. **File này không có trong bộ tải lên.**
+3. **Nạp `ember.dll`**: đây là DLL/ANE (AIR Native Extension) của Mobot, chạy bên trong game. Đây chính là engine bot (xem mục 5).
 4. **Bẻ giới hạn 1 cửa sổ game** bằng **MinHook**: hook `CreateMutexA`/`CreateFileMappingA` để đổi tên `MacromediaMutexOmega`/`MacromediaFMOmega` thành `…_pid<N>` khi phát hiện MctHost khác đang chạy. Nhờ vậy chạy được nhiều client cùng lúc.
 5. **Đổi giao diện cửa sổ**: hook `CreateWindowExW` và chờ class `ApolloRuntimeContentWindow` để đặt tiêu đề, icon và nút riêng ("skin").
 6. Ghi log ra `<log-dir>/host.log`. Log **không ghi mật khẩu** (chỉ ghi user/server và độ dài body). Nhưng log **có ghi `token`, `sessionId`, flashvars và 500 ký tự đầu của phản hồi server**. Ai đọc được `host.log` là có thể dùng lại phiên đăng nhập.
@@ -140,17 +140,64 @@ Lưu ý: AutoVLCMO gọi `"MctHost.exe" --bootdir . -instance:{GUID}`, nhưng tr
 | `Redirect.xml` | Đổi đích click: tọa độ NPC ở Tương Dương (20002) → ID NPC cửa hàng: 1638 Vũ Khí, 1639 Thuốc, 1640 Trang Sức, 1642 Gấm Vóc, 1647 Thú Cưỡi, 1650 Bí Kíp, 1090 Tiểu Nhị, 1739 Tạp Hóa. Ngoài ra còn 3 điểm đổi tọa độ quái (Loạn Quân, Thương Binh/Kỵ Binh Phản Bội) |
 | `LienTram.xml`, `ThienQuan.xml`, `DoanhTrai.xml`, `DoanhTrai_5_15.xml`, `PhongAnTran.xml`, `MeCung15.xml`, `MeCungThanBi.xml` | Chuỗi tọa độ `<Point x y>` để **chạy vòng gom/quây quái** trong từng phó bản. Chú thích đầu file của Doanh Trại vẫn ghi "Liên Trảm" (copy-paste) |
 
-Không file .exe nào ở đây tham chiếu tên các file XML này. Chúng được đọc bởi `Mobot.mpk` hoặc một bản auto khác. ID NPC 1638 trùng với `trainRepair1638` của bot SWF ở [REPORT.md](REPORT.md), tức là cả hai tool cùng chạy trên một game.
+Không file .exe nào ở đây tham chiếu tên các file XML này. Bản hiện tại dùng JSON trong `Mobot.mpk` thay cho chúng (cùng loại dữ liệu), nên nhiều khả năng Datas.rar là dữ liệu của bản auto cũ hơn. ID NPC 1638 trùng với `trainRepair1638` của bot SWF ở [REPORT.md](REPORT.md), tức là cả hai tool cùng chạy trên một game.
 
 ---
 
-## 5. Đánh giá rủi ro
+## 5. Mobot.mpk và ember.dll
+
+| File | Kích thước | SHA-256 | Loại |
+|---|---|---|---|
+| `Mobot.mpk` | 3 262 | `c74950ee…ad3e2f07` | Gói MPK v2, 8 file |
+| `ember.dll` | 13 862 520 | `31505053…b644389c` | PE32 DLL, build 2026-09-24, **ký EV của MOBOT**, export `ExtInitializer`/`ExtFinalizer` (Adobe AIR Native Extension) |
+
+### 5.1 Định dạng MPK: đã giải được
+Mình dịch ngược từ hàm ghi gói của AutoVLCMO (`0x6363e3`), rồi viết [`tools/unpack_mpk.py`](tools/unpack_mpk.py):
+
+```
+header 28 byte : "MPK\0" u16 ver=2 … u32 entry_size=40, u32 count, u32 table_off, u32 data_off
+entry  40 byte : u64 name_hash, md5[16], u32 flags, u32 raw, u32 stored, u32 offset
+flags 0x080    : nén zlib
+flags 0x100    : XOR lặp với md5[16], mà MD5 này nằm ngay trong bảng mục lục => không có khóa bí mật
+```
+Giải được **100 % file (MD5 khớp)** ở cả hai gói. Tên file không được lưu, chỉ có hash 64-bit.
+
+### 5.2 Mobot.mpk: chỉ là dữ liệu
+8 file JSON: vật phẩm cần nhặt/dùng (Long Thú Cân, Bích Linh Đơn…), 8 kinh mạch, skill môn phái (id 51011…, kèm môn phái), skill giang hồ/khác (52001…, 88001 Giáng Long Thập Bát Chưởng…), danh sách boss (id → tên: Hoắc Đô, Lý Mạc Sầu…), danh sách vật phẩm giao dịch, thuốc theo cấp. **Không có logic.**
+
+### 5.3 ember.dll: engine bot chạy trong client game
+- Nhúng **Lua 5.3.5** (bản 32-bit, có sửa đổi) và **OpenSSL/libcurl**.
+- Cầu nối Lua ↔ AS3 qua FRE API: `ember.callAS`, `newAS`, `readPrivate` (đọc cả thuộc tính **private** của lớp game), `pairs_trait`, **`ember.hook` / `ember.onAbcCall`** (chặn lời gọi hàm ActionScript của game), `ember.watch`, `ember.stage`. Nó cũng giả lập phím/chuột bằng `PostMessage` (log "INPUT: nut %d qua han -> TU NHA").
+- Lua có đủ thư viện chuẩn, **gồm cả `os.execute`, `io.popen`, `io.open`, `loadlib`**. Về kỹ thuật, script tải về có thể chạy lệnh hệ thống và đọc/ghi file.
+- Lộ đường dẫn phát triển: `d:/Mobot/SwfLua/ember2/scripts/ember2_tests.lua`.
+- Code nhân viết bằng C++ được **obfuscate kiểu OLLVM** (control-flow flattening, hằng số giả). Phần thư viện Lua thì không bị obfuscate.
+
+### 5.4 Gói MPK nhúng trong ember.dll (offset `0x75f608`): 99 file Lua 5.3 bytecode
+Mình decompile cả 99 file bằng **unluac** (không file nào lỗi, ~40 000 dòng). Chia làm 3 loại:
+
+| Loại | Số file | Nội dung |
+|---|---|---|
+| Lua đọc được | 25 | Khung AI: `ActivityDefine` (id hoạt động 2000–2100: train, NV chính/phụ/ngày/tuần/tuần hoàn, PB Liên Trảm/Thiên Quan/Doanh Trại/Mê Cung/Phu Tử, vận tiêu, bắt ngựa, giao dịch, tiệc cưới, sóc báu, boss, 3v3, giftcode, đổi acc), `ActivitySettings`, `ActivityManager`, `Goal`/`GoalComposite`/`StateMachine`/`Trigger`/`TriggerManager`, `EventDispatcher`, boot script `ember2` (đăng ký handler AS3, `ENTER_FRAME`); thư viện: JSON, LibDeflate, CRC32, md5.lua, fnv1a32, đổi mã TCVN3↔UTF-8, `NameData` (~25 000 tên tiếng Anh để **tự đặt tên nhân vật**), class `WebBot` (HTTP GET/POST qua **lcurl**, UA Chrome giả, có `PinSSL`) |
+| **Máy ảo MVM** | 73 | Toàn bộ logic từng chức năng (`AutoAI.*`). Mỗi file chỉ có dạng `AutoAI.Deflate(<blob>)`: blob = raw-deflate → định dạng **`MVMP` v2** (7 MB sau giải nén) |
+| MVM gốc | 1 | File lớn nhất (357 KB) gọi `mvm.run_vm_compressed(<blob>)`, cũng là MVMP |
+
+**MVM là gì:** `run_vm` (`0x106450e0`) đọc MVMP (`0x10647e20`: bảng hằng có tag, bảng chuỗi, hàm con đệ quy), rồi dựng một **Lua proto giả chỉ chứa lệnh `RETURN`**. Proto này gắn con trỏ tới cấu trúc MVM vào trường tuỳ biến `+0x50` và đặt cờ `+0x4c`. Lua VM trong ember đã bị sửa để khi gặp cờ đó thì chuyển sang **trình thông dịch riêng** (`0x10648d10`, **46 KB trong một hàm**, 21 bảng nhảy). Hằng chuỗi trong MVMP **được mã hoá** và chỉ giải mã lúc chạy.
+
+=> **Chưa đọc được logic chi tiết của các chức năng**: URL server, cách tính toán, gói tin gửi đi đều nằm trong phần MVM. Muốn đọc thì phải dịch ngược toàn bộ tập lệnh của trình thông dịch 46 KB này (viết devirtualizer). Đó là một dự án riêng, tốn nhiều ngày.
+
+Những gì biết chắc, không cần devirtualize:
+- Logic bot chạy **bên trong tiến trình game**, thao tác trực tiếp đối tượng AS3 (kể cả private) và hook hàm game. Về bản chất giống `game.pak` của bộ cũ, nhưng giấu kỹ hơn nhiều.
+- Script có sẵn **HTTP client (lcurl) và toàn quyền `os`/`io`**. Không thể loại trừ việc tool gửi dữ liệu ra ngoài hoặc chạy lệnh, vì phần gọi nằm trong MVM đã mã hoá.
+
+---
+
+## 6. Đánh giá rủi ro
 
 | Mức | Vấn đề |
 |---|---|
 | 🟠 Trung bình | **MobotRemote**: server của hãng có thể xem màn hình và gửi thao tác vào giả lập/game, kèm mã máy (HWID). Chưa xác định được lúc nào module này hoạt động. |
 | 🟠 Trung bình | **Vá `HD-Player.exe` của BlueStacks trên đĩa** và bật ADB. Làm hỏng chữ ký số, và có thể gây lỗi khi cập nhật BlueStacks. |
-| 🟠 Trung bình | Logic bot nằm trong `Mobot.mpk` và `ember.dll` (không có trong bộ tải lên), người dùng không kiểm chứng được. MctHost bị VMProtect nhưng đã dump được: nó chỉ đăng nhập qua cổng chính thức, nạp AIR và bẻ giới hạn nhiều cửa sổ. |
+| 🟠 Trung bình | Logic bot nằm trong **máy ảo MVM** tự chế trong `ember.dll` (chuỗi mã hoá), trong khi script có HTTP client và toàn quyền `os.execute`/`io`. Người dùng không kiểm chứng được script làm gì. MctHost bị VMProtect nhưng đã dump được: nó chỉ đăng nhập qua cổng chính thức, nạp AIR và bẻ giới hạn nhiều cửa sổ. |
 | 🟡 Thấp | `host.log` của MctHost ghi **token và sessionId Tepaylink** dạng rõ. |
 | 🟡 Thấp | Ping `whos.amung.us` (theo dõi số người dùng), ghi đè command line tiến trình con, cắt kết nối TCP. Đều là tính năng phục vụ auto, nhưng là hành vi "nhạy cảm". |
 | 🟢 | Có chữ ký EV của một công ty có đăng ký thật tại VN. Không thấy thêm ngoại lệ Windows Defender (khác bộ cũ), không thấy keylogger hay đào coin. Chạy giả lập bằng token Medium IL là kỹ thuật **hạ quyền**, không phải leo thang quyền. |
@@ -162,9 +209,10 @@ Không file .exe nào ở đây tham chiếu tên các file XML này. Chúng đ�
 
 ---
 
-## 6. Phương pháp
+## 7. Phương pháp
 - `unrar`, `file`, `sha256sum`, `pefile` (section, entropy, import, version, tài nguyên), `openssl pkcs7` (chứng chỉ)
 - Trích chuỗi ASCII và UTF-16LE (gồm cả tiếng Việt có dấu)
 - `capstone`: tìm xref tới chuỗi/IAT rồi đọc các hàm `0x63d78d`, `0x63e8e0`, `0x63fe36`, `0x6409a1`, `0x640f36`, `0x645900`, `0x64c3eb`
 - Tách APK nhúng (scrcpy-server) bằng cách đọc End-Of-Central-Directory của ZIP
 - MctHost: chạy bằng Wine 9.0 + Xvfb trong container, dump `/proc/<pid>/mem` sau 0,5 giây ([`tools/dump_wine.py`](tools/dump_wine.py)). AutoVLCMO **không chạy**.
+- Mobot.mpk / ember.dll: dịch ngược hàm ghi MPK của AutoVLCMO, giải bằng [`tools/unpack_mpk.py`](tools/unpack_mpk.py); decompile Lua 5.3 bằng unluac (2023-12-24); parser Lua-constant tự viết để lấy blob `AutoAI.Deflate`; raw-inflate ra MVMP; đọc `run_vm`/parser/trình thông dịch MVM bằng capstone. Mã Lua đã decompile **không đưa vào repo**.
