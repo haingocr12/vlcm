@@ -1,0 +1,29 @@
+// Script x32dbg cho Phần B (dùng khi không cài được Frida).
+// Attach x32dbg vào AutoVLCMO.exe, rồi Script -> Load -> file này -> Run (Space).
+// Breakpoint chỉ GHI LOG (không dừng), xem ở tab Log; chuột phải Log -> Save để lưu.
+// Cần bản x64dbg mới (có hàm biểu thức utf16()/strstr() và định dạng {utf16@...}).
+
+// B2: tên pipe - chỉ log khi lpFileName chứa "\pipe\"
+bp CreateFileW
+SetBreakpointCondition CreateFileW, 0
+SetBreakpointLogCondition CreateFileW, "strstr(utf16([esp+4]), \"\\\\pipe\\\\\")"
+SetBreakpointLog CreateFileW, "[CreateFileW] {utf16@[esp+4]}"
+
+bp WaitNamedPipeW
+SetBreakpointCondition WaitNamedPipeW, 0
+SetBreakpointLog WaitNamedPipeW, "[WaitNamedPipeW] {utf16@[esp+4]}"
+
+// B3: dữ liệu. Log handle/buffer/số byte; lọc theo handle pipe bằng cách sửa điều kiện:
+//   SetBreakpointLogCondition WriteFile, "[esp+4]==<HANDLE_PIPE>"
+bp WriteFile
+SetBreakpointCondition WriteFile, 0
+SetBreakpointLog WriteFile, "[WriteFile] h={p:[esp+4]} buf={p:[esp+8]} n={u:[esp+c]}"
+
+bp ReadFile
+SetBreakpointCondition ReadFile, 0
+SetBreakpointLog ReadFile, "[ReadFile] h={p:[esp+4]} buf={p:[esp+8]} max={u:[esp+c]} (dữ liệu có sau khi return)"
+
+// Để lưu nội dung 1 gói: đổi Condition của WriteFile thành "[esp+4]==<HANDLE>" để dừng,
+// rồi ở Command gõ:  savedata "C:\\cap\\goi.bin", [esp+8], [esp+c]
+// Với ReadFile: dừng -> Ctrl+F9 (run till return) -> savedata với buffer/số byte đã ghi lại.
+run
