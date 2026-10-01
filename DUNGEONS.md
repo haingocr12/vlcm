@@ -108,10 +108,13 @@ Mỗi ải:
 3. **Chống kẹt:** nếu đứng yên một ô quá 800 ms trong lúc đang đi (`pb25StuckSinceMs`) thì đi lại tới quái.
 4. **Qua ải khi đủ cả 3 điều kiện:** cổng đã mở (10300, hoặc thấy cổng `type == 7` tới `pb25Maps[ipb25+1]`), **sạch quái** và **sạch đồ**. Khi đó log "[PB25] Cổng đã mở + sạch quái + sạch đồ -> qua ải kế tiếp." và gọi `method_360()`. Ngoài ra, nếu 5 lần liên tiếp không thấy mục tiêu cũng qua ải.
 5. Đi sang ải: `mainCharWalk("<pb25Maps[ipb25]>,-1,-1,0")`.
-6. **Map 20067** (ải có boss/nhảy):
-   - gửi **11163** `[double getTimer()][int -1]`
-   - bật auto treo máy gốc của game (`method_89`), chỉnh `afkInfo2`: `isAutoPickUpMoney = 1`, `afkRangeCount = 50`
+6. **Map 20062 và 20067** (hai ải có nhảy), xử lý ở mỗi frame:
+   - gửi **11163** `[double getTimer()][int -1]` (nhặt túi đồ; bagID −1, có lẽ là "tất cả")
+   - bật auto treo máy gốc của game theo cài đặt (`method_89`), ép `afkInfo2`: `isAutoPickUpMoney = 1`, `afkRangeCount = 50`
    - lưu cấu hình auto lên server bằng `method_197` → gói **50581**
+
+   Bot gốc còn xử lý gói rơi đồ **11162** `[monsterID, bagID, x, y, goodsID, amount, quality]` bằng cách gửi ngay **11163** `[time, bagID]`, tức nhặt túi từ xa.
+   Nhiều khả năng 20062/20067 là các ải rơi đồng (ải chuột); điều này chưa kiểm chứng.
 
 ---
 
@@ -191,7 +194,8 @@ Vì mảng `pb40Door` được giữ suốt lượt, sau một lần đi bot **n
 | 10300 | nhận | PB20, PB25 | `int transId, int destPos, byte isOpen`: cổng tầng mở |
 | 10726 | nhận | tất cả | phó bản hoàn thành |
 | 10723 | gửi | tất cả | nhận thưởng |
-| 11163 | gửi | PB25 map 20067 | `double time, int -1` |
+| 11162 | nhận | PB25 | rơi đồ: `int monsterID, int bagID, short x, short y, int goodsID, int amount, byte quality` |
+| 11163 | gửi | PB25 map 20062/20067 | `double time, int bagID` (−1 ở 2 map này): nhặt túi |
 | 50581 | gửi | PB25 | lưu cấu hình auto treo máy |
 | 10129 | gửi | PB30 | `int 1738`: hỏi thứ tự |
 | 52005 / 53043 | gửi | PB30 | `byte 0`: tắt ám khí / tắt cung |
