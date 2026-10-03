@@ -285,8 +285,12 @@ Doanh Trại dùng chung luồng `pbInStep` với Thiên Quan.
   - không bỏ qua: mỗi nhịp tìm lại con sóc theo tên (chứa "sóc"), đuổi theo bằng lệnh đi tới đúng vị trí hiện tại của nó (cập nhật khi nó chạy > 2 ô), trong tầm thì ra chiêu;
     không thấy sóc thì đi tuần quanh map; sóc chết → nhặt đồ rơi rồi ra cổng; chưa có tuyến thì dùng các điểm chia đều bản đồ;
   - bỏ qua (tick): đi thẳng tới cổng ra như phòng thần bí 1 (`mcSecretExit`).
-- Còn hỏi: map ID (hoặc tên map hiện trên game) của ải thần bí 2; tên chính xác con sóc ("Sóc Báu"?); ra khỏi ải bằng cổng hay tự đưa ra khi giết xong;
-  sóc có bị khống chế / chậm lại không (để biết có cần nhảy hoặc skill khống chế).
+- **Đã chốt (03-10):**
+  - tìm sóc: quét **toàn map (99 ô)** mọi quái client đang biết, tên chứa "Sóc" (không phân biệt hoa thường); chỉ khi client chưa thấy con nào mới đi tới giữa map / các điểm chia đều để lộ ra;
+    (lưu ý: client có thể chỉ nhận quái trong tầm nhìn — nếu vậy quét 99 ô vẫn không thấy khi sóc ở xa, phải dựa vào điểm dự phòng);
+  - đuổi: **nhảy** tới gần sóc (charJump, điều kiện game: thể lực ≥ 20, map cho nhảy, không bị trói; tầm nhảy theo game), nhảy không được thì đi; trong tầm thì ra chiêu;
+  - ra khỏi ải: **bước vào cổng** (như phòng thần bí 1);
+  - map ID: chưa biết → bản sửa tự log map ID lần đầu vào ải.
 
 **Phu Tử**
 - E1. Quái theo thứ tự có thể kẹt vĩnh viễn (giống B1): `run.ptTarget` được gán lại sau khi bị bỏ, và lúc tìm không bỏ qua `_black`. Sửa: bỏ con đó, tìm con cùng tên khác; chỉ còn đúng con đó thì đi tuần một vòng rồi thử lại.
