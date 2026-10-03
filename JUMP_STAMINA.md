@@ -48,3 +48,26 @@ Mình chưa biết ý nghĩa của các tham số `-1`, `jumpMax`, `false`, `fal
 2. Thử `10063` với điểm cuối khác điểm đầu 1–3 ô, để xem thể lực có bị trừ theo quãng đường không.
 3. Thử byte kiểu = 2, 3, để xem kiểu nhảy ảnh hưởng tới chi phí thế nào.
 4. Lưu ý rủi ro: gửi gói nhảy thô đều đặn mỗi 700 ms với điểm đầu = điểm cuối là một mẫu rất dễ bị server phát hiện. Nhảy bằng `charJump` an toàn hơn.
+
+## 5. Đã loại trừ: bot không vá thể lực trong bộ nhớ
+
+- SWF: không có chỗ nào đọc hoặc ghi thể lực, và không có lớp nào móc vào `charJump`, `MainCharSeachPathManager` hay `AttributeInfo`. Các lớp phụ trong SWF chỉ là AES, bộ đệm và lớp đọc thông tin hệ thống.
+- `vlcmcliet.exe` có gọi `ReadProcessMemory` / `VirtualProtectEx` / `WriteProcessMemory` (hàm quanh `0x40ce83`). Hàm này quét các vùng nhớ đã cấp phát:
+  - tìm chữ ký SWF 3 byte, theo sau là byte phiên bản `0x1A` (26) và kích thước từ 0x2BF20 tới khoảng 0x2933E0
+  - **ghi đè 3 byte chữ ký bằng 0**
+
+  Đây là cơ chế **chống trích xuất SWF đã giải mã ra khỏi RAM**, không liên quan đến thể lực.
+
+## 6. Giả thuyết mạnh nhất cho "nhảy quanh quái không tốn thể lực"
+
+Bot gốc **không bao giờ nhảy liên tiếp**. Nó chỉ nhảy khi `isJumping()`, `on2Jumping()` và `on3Jumping()` đều là false, và mỗi lần chỉ gọi `charJump` một lần. Kết quả là mọi cú nhảy đều là **nhảy tầng 1**.
+
+Nếu game chỉ trừ thể lực khi **nhảy tầng 2/3** (bấm nhảy tiếp khi đang ở trên không), còn nhảy tầng 1 miễn phí hoặc gần như miễn phí, thì sẽ khớp với hiện tượng "nhảy liên tục mà thể lực không giảm".
+
+Tham số thứ 4 cũng khác: bot gốc truyền `jumpMax = OtherConst.JUMP_MAX_DIS` (mặc định 8), còn tool của bạn truyền 500. Nếu chi phí nhảy tính theo quãng đường hoặc theo tham số này, đây có thể là khác biệt.
+
+**Thí nghiệm phân biệt** (log `ppNow` trước, ngay sau, và 1 giây sau mỗi cú nhảy):
+1. `charJump(mc, p, -1, 8, null, false, false)` với điểm rơi cách 3 ô (đúng như bot gốc).
+2. Như trên nhưng tham số thứ 4 = 500.
+3. Nhảy khi đang `isJumping()` (nhảy tầng 2).
+4. `10063 [x,y,x,y,1,t]` (nhảy tại chỗ, như "nhảy khi train").
