@@ -292,6 +292,12 @@ Doanh Trại dùng chung luồng `pbInStep` với Thiên Quan.
   - ra khỏi ải: **bước vào cổng** (như phòng thần bí 1);
   - map ID: chưa biết → bản sửa tự log map ID lần đầu vào ải.
 
+**Error #1009 ở Mê Cung tầng 15, nhân vật đứng yên** (Hain báo 03-10, log: hồi máu "Cách Không Độ Khí" rồi lỗi lặp ~6s/lần) — **[03-10f: chẩn đoán + tự gỡ]**
+- #1009 = đọc thuộc tính của null; lỗi ném ra mỗi nhịp ở cùng chỗ → `step` dừng giữa chừng → đứng yên. Đọc code chưa xác định được dòng.
+- 03-10f: log lỗi kèm bước đang chạy `tại [pb:in>mc>phòng15>chuột>đánh>chiêu]` + 3 hàm đầu của stack (nếu Flash cho);
+  cùng một lỗi lặp 3 giây → `errRecover` (bỏ mục tiêu / túi / lệnh đi / hàng chờ chiêu / mục tiêu chuột) để chạy tiếp; `isDead(null)` không còn ném lỗi.
+- Chờ Hain gửi dòng lỗi mới (có phần `tại [...]`) để sửa tận gốc.
+
 **Phu Tử**
 - E1. Quái theo thứ tự có thể kẹt vĩnh viễn (giống B1): `run.ptTarget` được gán lại sau khi bị bỏ, và lúc tìm không bỏ qua `_black`. Sửa: bỏ con đó, tìm con cùng tên khác; chỉ còn đúng con đó thì đi tuần một vòng rồi thử lại.
 - E2. Giết đúng con theo thứ tự không tính kill, không chờ đồ rơi. Sửa: tính kill + chờ đồ rơi 1 giây.

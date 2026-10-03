@@ -398,14 +398,42 @@ public class VlcmTrain {
     private function onTick(e:TimerEvent):void {
         var now:int = getTimer();
         _util.perfTick(now, TICK_MS);
-        try { step(now); }
+        _bc = "";
+        try { step(now); _errSame = 0; }
         catch (err:Error) {
-            if (++_errors % 50 == 1) _emit("train", "error " + err.message);
+            var key:String = err.message + "@" + _bc;
+            if (key == _errKey) _errSame++; else { _errKey = key; _errSame = 1; }
+            if (++_errors % 50 == 1 || _errSame == 1) _emit("train", "error " + err.message + " tại [" + _bc + "]" + stackTop(err));
+            if (_errSame == 30) errRecover(key);                      // cùng một lỗi lặp 3 giây: đặt lại trạng thái tạm để không đứng yên
         }
         if (now - _lastStatus >= STATUS_EVERY) {
             _lastStatus = now;
             _emit("train", "status " + status());
         }
+    }
+
+    // ---- chẩn đoán lỗi: bước đang chạy (breadcrumb) + 3 hàm đầu của stack (Flash Player 11.5+ có stack ở bản thường)
+    private var _bc:String = "", _errKey:String = "", _errSame:int = 0;
+    private function bc(where:String):void { _bc = _bc ? _bc + ">" + where : where; }
+    private static function stackTop(e:Error):String {
+        var st:String = null;
+        try { st = e.getStackTrace(); } catch (x:Error) { }
+        if (!st) return "";
+        var out:Array = [];
+        for each (var line:String in st.split("\n")) {
+            var i:int = line.indexOf("at ");
+            if (i < 0) continue;
+            out.push(line.substr(i + 3).replace(/\[.*\]/, "").replace(/^\s+|\s+$/g, ""));
+            if (out.length >= 3) break;
+        }
+        return out.length ? " stack: " + out.join(" < ") : "";
+    }
+    /** cùng một lỗi lặp liên tục: bỏ mục tiêu / túi / lệnh đi đang theo, xóa hàng chờ chiêu — nhịp sau chọn lại từ đầu */
+    private function errRecover(key:String):void {
+        _emit("train", "warn lỗi lặp 3 giây (" + key + ") — đặt lại mục tiêu / nhặt / lệnh đi để chạy tiếp");
+        _target = null; _pickBag = null; _pp = null; _ap = null; _mv = null; _dw = null; _castPend = [];
+        if (_pbRun) { _pbRun.mouseTarget = null; _pbRun.mouseDeadAt = 0; _pbRun.gp = null; _pbRun.moveAt = 0; }
+        try { gi().lockOnChar = null; _c.MainCharSeachPathManager.clear(); } catch (e:Error) { }
     }
 
     private function step(now:int):void {
@@ -428,7 +456,7 @@ public class VlcmTrain {
         trackMove(now);
         walkWatch(now);
         moveDiag(now);
-        if (_state == PB) { pbStep(now); return; }
+        if (_state == PB) { bc("pb:" + _pbPhase); pbStep(now); return; }
         if (isDead(me())) {
             if (_state != DEAD) {
                 setState(DEAD, "chết, chờ hồi sinh về thành");
@@ -542,8 +570,8 @@ public class VlcmTrain {
             _target = null;
             return;
         }
-        if (useSkill(now)) { _ap = null; return; }
-        if (_oor) { approach(now, _oorStop); return; }                    // có skill sẵn sàng nhưng quái ngoài tầm: đi lại gần trước
+        bc("chiêu"); if (useSkill(now)) { _ap = null; return; }
+        if (_oor) { bc("lại gần"); approach(now, _oorStop); return; }                    // có skill sẵn sàng nhưng quái ngoài tầm: đi lại gần trước
         if (now - _lastHit >= (_fast ? 400 : HIT_EVERY) && me().getStatus() != "attack") {
             pipe("HIT_CHAR", [_target, true, true]);
             _lastHit = now;
@@ -1549,7 +1577,7 @@ public class VlcmTrain {
         var fl:int = (def.maps as Array).indexOf(here);
         if (run.key == "mc") {
             if (now - run.progressAt > PB_FLOOR_STUCK) pbUnstick(run, now, "mê cung phòng " + (MC_ROOMS.indexOf(here) + 1));
-            mcStep(run, now); return;
+            bc("mc"); mcStep(run, now); return;
         }
         if (fl != run.floor || here != run.floorMap) {                  // vào tầng / ải mới
             run.floor = fl; run.floorMap = here; run.floorAt = now; run.ri = 0; run.quietAt = -1; run.noTarget = 0;
@@ -1570,7 +1598,8 @@ public class VlcmTrain {
         // tâm = nhân vật; phạm vi tìm quái theo cài đặt từng phó bản (mặc định 99)
         var range:int = run.cfg.range > 0 ? run.cfg.range : 99;
         _map = here; _x = me().tile_x; _y = me().tile_y; _r = range;
-        if (support(now)) return;
+        bc("hỗ trợ"); if (support(now)) return;
+        bc("nhặt");
         // nhặt trước (đồ để lâu sẽ mất): có quái trong 20 ô thì nhặt trong 20 ô, không thì toàn map. Đang đi sang tầng thì thôi nhặt.
         if (!run.goingGate && pbPickStep(now, mobWithin(PB_R) ? PB_R : 9999)) { run.progressAt = now; run.noTgtAt = -1; return; }
         // giữ mục tiêu tới khi chết hoặc cách > 12 ô; chọn mới: con gần nhất trong phạm vi
@@ -1611,10 +1640,11 @@ public class VlcmTrain {
                 try { _c.MainCharSeachPathManager.clear(); me().stopMove(); } catch (e3:Error) { }
                 _mv = null;
             }
-            if (run.cfg.jump && pbJump(mob, now, 0)) return;   // Doanh Trại: nhảy quanh quái ở mọi ải game cho nhảy (xen kẽ với đánh)
-            fight(now);
+            bc("nhảy"); if (run.cfg.jump && pbJump(mob, now, 0)) return;   // Doanh Trại: nhảy quanh quái ở mọi ải game cho nhảy (xen kẽ với đánh)
+            bc("đánh"); fight(now);
             return;
         }
+        bc("tuần");
         _target = null;
         if (run.noTgtAt < 0) run.noTgtAt = now;
         if (now - run.noTgtAt < PB_QUIET) return;                       // không có mục tiêu liên tục 1 giây
@@ -2143,6 +2173,7 @@ public class VlcmTrain {
     }
     /** true = đang xử lý ải chuột (tick này không làm gì khác) */
     private function pbMouseStep(run:Object, now:int, route:Array):Boolean {
+        bc("chuột");
         var mice:Array = pbMice();
         if (mice.length && !run.mouse) { run.mouse = true; run.mouseLapClean = false; run.mri = 0; _emit("train", "pb " + run.key + " ải chuột: chỉ đánh chuột, đánh chết con nào nhặt hết đồng rồi mới đánh tiếp"); }
         if (!run.mouse) return false;
@@ -2155,7 +2186,7 @@ public class VlcmTrain {
             if (_lastDropMob[mt.id] == undefined && now - run.mouseDeadAt < 1500) return true;
             run.mouseTarget = null; run.mouseDeadAt = 0; _target = null;
         }
-        if (pbPickStep(now, MOUSE_R)) return true;                       // nhặt đồng trước
+        bc("nhặt"); if (pbPickStep(now, MOUSE_R)) return true;                       // nhặt đồng trước
         if (run.mouseTarget == null) {
             var best:Object = null, bd:Number = Number.MAX_VALUE;
             for each (var c:Object in mice) { var d:Number = tileDist(me(), c.tile_x, c.tile_y); if (d < bd) { bd = d; best = c; } }
@@ -2164,10 +2195,11 @@ public class VlcmTrain {
         if (run.mouseTarget) {
             run.quietAt = -1; run.mouseLapClean = false;
             if (_target != run.mouseTarget) { _target = run.mouseTarget; gi().lockOnChar = _target; }
-            if (support(now)) return true;
-            fight(now);
+            bc("hỗ trợ"); if (support(now)) return true;
+            bc("đánh"); fight(now);
             return true;
         }
+        bc("tuần");
         // không thấy chuột: đi tuần tìm tiếp; đi hết một vòng không thấy con nào và hết đồng -> xong ải chuột
         if (route && route.length && !run.mouseLapClean) {
             var p:Array = route[int(run.mri) % route.length];
@@ -2629,6 +2661,7 @@ public class VlcmTrain {
             if (!pbMouseStep(run, now, run.cfg.sroute && run.cfg.sroute.length ? run.cfg.sroute : MC_SECRET_ROUTE)) mcSecret(run, now);
             return;
         }
+        bc("phòng" + (room + 1));
         if (room == 14 && !run.cfg.skipMice && !run.mouseDone && pbMouseStep(run, now, run.cfg.r15 && run.cfg.r15.length ? run.cfg.r15 : MC_R15_ROUTE)) return;   // tầng 15: ải chuột
         if (room < 0) return;
         // treo đánh quái ở tầng chỉ định
@@ -2709,8 +2742,9 @@ public class VlcmTrain {
             return false;
         }
         _map = curMap(); _x = MC_FARM_X; _y = MC_FARM_Y; _r = MC_FARM_R;        // vùng treo: quanh điểm treo
-        if (support(now)) return true;
-        if (pickStep(now)) return true;                                       // nhặt theo cài đặt nhặt của Đánh quái
+        bc("treo"); bc("hỗ trợ"); if (support(now)) return true;
+        bc("nhặt"); if (pickStep(now)) return true;
+        bc("đánh");                                       // nhặt theo cài đặt nhặt của Đánh quái
         if (_target != null || _dw != null || pick(now) != null) { fight(now); return true; }   // quái tự tới: đánh (fight tự tính kill, chờ đồ rơi)
         if (tileDist(me(), MC_FARM_X, MC_FARM_Y) > 2 && me().getStatus() != "walk" && now - run.moveAt > 1000) {
             walkTo(curMap(), MC_FARM_X, MC_FARM_Y, "điểm treo mê cung"); run.moveAt = now;
@@ -2882,7 +2916,8 @@ public class VlcmTrain {
     }
 
     private static function isDead(c:Object):Boolean {
-        if (c.getStatus() == "death") return true;
+        if (c == null) return true;
+        try { if (c.getStatus() == "death") return true; } catch (e0:Error) { }
         try { return c.data.attributeInfo.isDeath(); } catch (e:Error) { }
         return false;
     }
