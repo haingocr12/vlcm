@@ -423,6 +423,7 @@ public class VlcmTrain {
             _dropsSweepAt = now + 60000;
         }
 
+        trackMove(now);
         walkWatch(now);
         moveDiag(now);
         if (_state == PB) { pbStep(now); return; }
@@ -664,6 +665,9 @@ public class VlcmTrain {
         gi().lockOnChar = me();
         pipe("USE_SKILL", pick);
         gi().lockOnChar = safeLock(_target != null ? _target : keep);
+        // game dừng bước khi ra chiêu (stopMove): xóa mốc chống spam để nhịp sau gửi lại lệnh đi ngay; đi tuần không tính đoạn bị dừng
+        _mv = null;
+        if (_pbRun) { _pbRun.moveAt = 0; if (_pbRun.gp) _pbRun.gp.prog = now + 1000; }
         _lastSupport = now;
         _lastSkill = now;
         var cls:String = pubClass(pick), pt:int = pubTime(pick);
@@ -1137,10 +1141,7 @@ public class VlcmTrain {
     private var _pbDoneAt:int = -1;           // 10726
     private var _pbJumpDir:int = 0, _pbJumpAt:int = 0;
     private var _noJumpLog:Object = {};       // map đã báo "game không cho nhảy"
-    private static const JUMP_TEST_MAX:int = 500;  // tầm nhảy của bản cũ (chế độ thử)
-    private var _jChk:Object = null;          // lần nhảy đang chờ xem kết quả
-    private var _jSt:Object = null;           // thống kê nhảy từ lần báo trước
-    private var _jRepAt:int = 0;
+    private static const PT_JUMP_MAX:int = 500;    // Phu Tử (boss Khôi Khôi): giữ tầm nhảy như cũ
     private var _pbWait:Object = {};
     private var _pbCur:String = null;         // phó bản đang làm (giữ cả lúc về thành giữa 2 lượt): làm hết lượt rồi mới sang phó bản khác
     private var _pbRoseTry:int = 0, _pbRoseWait:int = 0;          // key -> đã báo chờ (điều kiện liên trảm chưa đạt) trong danh sách này
@@ -1177,7 +1178,7 @@ public class VlcmTrain {
                 if (c4 > 0) sroute.push([int(sp.substr(0, c4)), int(sp.substr(c4 + 1))]);
             }
             queue.push({ key: key, runs: int(kv[key + "_runs"]), rev: Math.max(0, int(kv[key + "_rev"])),
-                            minr: int(kv[key + "_minr"]), jump: kv[key + "_jump"] == "1", jmax: int(kv[key + "_jmax"]), route: route, sroute: sroute, r15: r15,
+                            minr: int(kv[key + "_minr"]), jump: kv[key + "_jump"] == "1", route: route, sroute: sroute, r15: r15,
                             bow: kv[key + "_bow"] != "0", farm: int(kv[key + "_farm"]), farmMin: Math.max(1, int(kv[key + "_farmmin"] || 10)),
                             farmBy: kv[key + "_farmby"] == "lz" ? "lz" : "min", farmLz: Math.max(1, int(kv[key + "_farmlz"] || 300)), skipMice: kv[key + "_skip"] == "1",
                             sf: int(kv[key + "_sf"]), nomob: int(kv[key + "_nomob"]), lzc: parseLzCond(kv[key + "_lz"]),
@@ -1244,8 +1245,20 @@ public class VlcmTrain {
         }
         _pbQueue = queue; _pbSkip = skip; _pbWait = wait;
         _pbDone = pbParseDone(kv);
-        if (!_pbRun) applyFightCfg(kv);                               // đang trong lượt: giữ bộ kỹ năng của lượt đó
-        _emit("train", "pb list " + _pbQueue.map(function(q3:*, i:int, a:Array):String { return q3.key; }).join(",") + (cur ? " (đang làm " + cur + ")" : ""));
+        applyFightCfg(kv);                                            // kỹ năng / hỗ trợ / nhặt chung: áp dụng ngay
+        var changed:Array = [];
+        if (_pbRun) {                                                 // lượt đang chạy: áp dụng ngay cài đặt mới của chính phó bản này
+            var nc:Object = null;
+            for each (var q4:Object in queue) if (q4.key == _pbRun.key) { nc = q4; break; }
+            if (nc && nc != _pbRun.cfg) {
+                changed = pbCfgDiff(_pbRun.cfg, nc);
+                _pbRun.cfg = nc;
+            }
+            if (_pbRun.cfg && _pbRun.cfg.sk) { applyFightCfg(_pbRun.cfg.sk); _castPend = []; }   // bộ kỹ năng riêng của phó bản
+        }
+        if (kv.live == "1") _emit("train", "pb cài đặt mới" + (_pbRun ? " (áp dụng ngay cho " + _pbRun.key + ")" : "") + (changed.length ? ": " + changed.join(", ") : "")
+                                 + "; kỹ năng: " + fightCfgText());
+        else _emit("train", "pb list " + _pbQueue.map(function(q3:*, i:int, a:Array):String { return q3.key; }).join(",") + (cur ? " (đang làm " + cur + ")" : ""));
         if (cur && on.indexOf(cur) < 0) {                             // bỏ tick đúng phó bản đang làm: thoát
             _pbCur = null;
             if (_pbRun && (_pbPhase == "in" || _pbPhase == "dead")) {
@@ -1257,6 +1270,21 @@ public class VlcmTrain {
         }
         if (_pbQueue.length == 0 && !_pbRun) { _emit("train", "pb finish"); pbStop("không còn phó bản được chọn"); return "ok pb idle"; }
         return "ok pb " + _pbPhase;
+    }
+
+    /** các mục cài đặt phó bản khác nhau (để log); tuyến chỉ báo "tuyến" */
+    private static function pbCfgDiff(a:Object, b:Object):Array {
+        var out:Array = [];
+        for (var k:String in b) {
+            if (k == "key" || k == "lzc") continue;
+            var x:* = a[k], y:* = b[k];
+            if (y is Array || y is Object && !(y is String) && !(y is Number) && !(y is Boolean)) {
+                var sx:String = "", sy:String = "";
+                try { sx = JSON.stringify(x); sy = JSON.stringify(y); } catch (e:Error) { }
+                if (sx != sy) out.push(k == "sk" ? "bộ kỹ năng" : k);
+            } else if (x !== y) out.push(k + " " + x + "→" + y);
+        }
+        return out;
     }
 
     private function pbStop(why:String):void {
@@ -1500,7 +1528,6 @@ public class VlcmTrain {
         }
         if (_pbDoneAt > 0) { _pbPhase = "reward"; _pbAt = now; _target = null; return; }
         if (run.unpick) { pbExit("bỏ tick phó bản đang chạy"); return; }
-        jumpWatch(now);
         if (now - run.start > PB_RUN_MAX) { pbExit("quá " + int(PB_RUN_MAX / 60000) + " phút"); return; }
         _fast = false; _pbNoBoss = false;
         if (anyMob()) run.mobSeenAt = now;
@@ -1565,7 +1592,7 @@ public class VlcmTrain {
         }
         if (mob) {
             run.noTgtAt = -1; run.noTarget = 0; run.lapFound = true; run.progressAt = now; run.goingGate = false;
-            if (run.cfg.jump && pbJump(mob, now, run.cfg.jmax)) return;   // Doanh Trại: nhảy quanh quái ở mọi ải game cho nhảy (xen kẽ với đánh)
+            if (run.cfg.jump && pbJump(mob, now, 0)) return;   // Doanh Trại: nhảy quanh quái ở mọi ải game cho nhảy (xen kẽ với đánh)
             fight(now);
             return;
         }
@@ -1619,17 +1646,20 @@ public class VlcmTrain {
         var d:Number = tileDist(me(), x, y);
         if (d <= arrive) { run.gp = null; return "arrived"; }
         var g:Object = run.gp;
-        if (g == null || g.x != x || g.y != y || now - g.last > 1000) { g = run.gp = { x: x, y: y, best: d, prog: now, last: now }; }
+        if (g == null || g.x != x || g.y != y || now - g.last > 1000) { g = run.gp = { x: x, y: y, best: d, prog: now, last: now, sent: 0 }; }
         g.last = now;
-        if (d < g.best - 0.99 || busyAnim(me())) { if (d < g.best) g.best = d; g.prog = now; }   // đang diễn chiêu / nhảy: không tính giờ
-        if (now - g.prog > 1500) {
+        if (d < g.best - 0.99 || busyAnim(me())) { if (d < g.best) g.best = d; if (now > g.prog) g.prog = now; }   // đang diễn chiêu / nhảy: không tính giờ
+        // không tới được: đã gửi lệnh đi (ít nhất 1,5s trước) mà 2,5s không lại gần
+        if (now - g.prog > 2500 && g.sent > 0 && now - g.sent > 1500) {
             run.gp = null;
             var k:String = curMap() + ":" + x + ":" + y;
             if (!run.badPts) run.badPts = {};
             if (!run.badPts[k]) { run.badPts[k] = true; _emit("train", "info điểm (" + x + "," + y + ") map " + curMap() + " không tới được, bỏ qua"); }
             return "stuck";
         }
-        if (me().getStatus() != "walk" && now - int(run.moveAt) > retry) { walkTo(curMap(), x, y, "đi tuần"); run.moveAt = now; run.progressAt = now; }
+        if (me().getStatus() != "walk" && now - int(run.moveAt) > retry) {
+            if (moveTo(curMap(), x, y, 0, "đi tuần")) { run.moveAt = now; g.sent = now; run.progressAt = now; }
+        }
         return "walking";
     }
     private function badPoint(run:Object, p:Array):Boolean { return run.badPts && run.badPts[curMap() + ":" + p[0] + ":" + p[1]]; }
@@ -2314,36 +2344,6 @@ public class VlcmTrain {
         try { if (_c.OtherConst && int(_c.OtherConst.JUMP_MAX_DIS) > 0) return int(_c.OtherConst.JUMP_MAX_DIS); } catch (e:Error) { }
         return 8;
     }
-    // ---- thống kê nhảy (để so sánh tầm "theo game" và 500): sau mỗi lần nhảy 1,2s xem nhân vật đáp ở đâu và thể lực đổi bao nhiêu
-    private function jumpNote(now:int, jmax:int, game:Boolean, x0:int, y0:int, nx:int, ny:int, jd:Number, pp0:int):void {
-        jumpCheck(now, true);
-        if (_jSt == null) { _jSt = { n: 0, ok: 0, off: 0, none: 0, far: 0, maxd: 0, ppSum: 0, ppN: 0, mode: "" }; if (_jRepAt == 0) _jRepAt = now; }
-        _jSt.n++; _jSt.mode = game ? "theo game " + jmax + " ô" : "thử " + jmax;
-        if (jd > _jSt.maxd) _jSt.maxd = jd;
-        if (jd > 8) _jSt.far++;
-        _jChk = { at: now, x0: x0, y0: y0, x: nx, y: ny, pp: pp0 };
-    }
-    private function jumpCheck(now:int, force:Boolean):void {
-        if (_jChk == null || (!force && now - _jChk.at < 1200)) return;
-        var m:Object = me();
-        if (m && _jSt) {
-            if (m.tile_x == _jChk.x0 && m.tile_y == _jChk.y0) _jSt.none++;               // không rời chỗ: client/server không cho nhảy
-            else if (tileDist(m, _jChk.x, _jChk.y) <= 1.5) _jSt.ok++;                   // đáp đúng điểm
-            else _jSt.off++;                                                           // đáp lệch / bị kéo về
-            var pp1:int = -1;
-            try { pp1 = int(gi().mainCharData.attributeInfo.ppNow); } catch (e:Error) { }
-            if (_jChk.pp >= 0 && pp1 >= 0) { _jSt.ppSum += _jChk.pp - pp1; _jSt.ppN++; }
-        }
-        _jChk = null;
-    }
-    private function jumpWatch(now:int):void {
-        jumpCheck(now, false);
-        if (_jSt == null || now - _jRepAt < 30000) return;
-        var pp:String = _jSt.ppN > 0 ? (_jSt.ppSum / _jSt.ppN).toFixed(1) : "?";
-        _emit("train", "info nhảy [" + _jSt.mode + "] " + _jSt.n + " lần/" + int((now - _jRepAt) / 1000) + "s: đáp đúng " + _jSt.ok + ", lệch/bị kéo " + _jSt.off
-              + ", không nhảy " + _jSt.none + "; xa nhất " + _jSt.maxd.toFixed(1) + " ô, " + _jSt.far + " lần > 8 ô; thể lực giảm trung bình " + pp + "/lần (1,2s sau, đã gồm hồi)");
-        _jSt = null; _jRepAt = now;
-    }
 
     /**
      * Nhảy quanh quái (Doanh Trại: mọi ải; Phu Tử: boss trạng thái đặc biệt) — như Shift+click của người chơi: MainCharSeachPathManager.charJump.
@@ -2351,7 +2351,7 @@ public class VlcmTrain {
      */
     /**
      * maxd: tham số tầm nhảy truyền cho charJump. <= 0 = theo game (OtherConst.JUMP_MAX_DIS, không đọc được thì 8 ô) và
-     * bỏ điểm đáp ngoài tầm như bot gốc; JUMP_TEST_MAX (500) = như bản cũ, không lọc (chế độ thử để so sánh).
+     * bỏ điểm đáp ngoài tầm như bot gốc (Doanh Trại); > 0 = truyền nguyên, không lọc (Phu Tử giữ 500 như cũ).
      */
     private function pbJump(mob:Object, now:int, maxd:int):Boolean {
         var here:int = curMap();
@@ -2378,14 +2378,11 @@ public class VlcmTrain {
             if (nx == m.tile_x && ny == m.tile_y) continue;
             var jd:Number = tileDist(m, nx, ny);
             if (game && jd > jmax) continue;                            // ngoài tầm nhảy của game: thử hướng khác
-            var pp0:int = -1;
-            try { pp0 = int(gi().mainCharData.attributeInfo.ppNow); } catch (e1:Error) { }
             try {
                 _c.MainCharSeachPathManager.clear();
                 _c.MainCharSeachPathManager.charJump(m, new Point(nx, ny), -1, jmax, null, false, false);
             } catch (e2:Error) { return false; }
             _pbJumpAt = now;
-            jumpNote(now, jmax, game, m.tile_x, m.tile_y, nx, ny, jd, pp0);
             return true;
         }
         return false;
@@ -2487,7 +2484,7 @@ public class VlcmTrain {
             run.progressAt = now;
             if (support(now)) return;
             if (_target != boss) { _target = boss; _targetSince = now; gi().lockOnChar = boss; }
-            if (run.cfg.jump && ptBossSpecial(boss) && pbJump(boss, now, JUMP_TEST_MAX)) return;
+            if (run.cfg.jump && ptBossSpecial(boss) && pbJump(boss, now, PT_JUMP_MAX)) return;
             fight(now);
             return;
         }
@@ -2777,7 +2774,8 @@ public class VlcmTrain {
         if (charFixed()) return false;
         if (_mv != null && _mv.map == map && Math.abs(x - _mv.x) + Math.abs(y - _mv.y) <= 1 && stop == _mv.stop) {
             if (now - _mv.at < 1500) return false;
-            var moving:Boolean = m.getStatus() == "walk" || m.tile_x != _mv.fx || m.tile_y != _mv.fy;
+            // đang đi thật (trạng thái walk, hoặc vừa đổi ô trong 1s): chưa gửi lại; lệnh trước đã chết (đứng yên) thì gửi lại được
+            var moving:Boolean = m.getStatus() == "walk" || (now - _lastMoveAt < 1000 && (m.tile_x != _mv.fx || m.tile_y != _mv.fy));
             if (moving && now - _mv.at < 4000) return false;
         }
         if (!walkCmd(map + "," + x + "," + y + "," + stop, null, src, x, y)) return false;
@@ -2786,6 +2784,11 @@ public class VlcmTrain {
     }
     /** chẩn đoán: gửi lệnh đi 1s mà không nhích -> ghi 1 dòng (tối đa 1 dòng / 10s) */
     private var _mvDiagAt:int = -60000;
+    private var _lastMoveAt:int = 0, _lmX:int = -1, _lmY:int = -1;   // lần cuối nhân vật đổi ô
+    private function trackMove(now:int):void {
+        var m:Object = me();
+        if (m && (m.tile_x != _lmX || m.tile_y != _lmY)) { _lmX = m.tile_x; _lmY = m.tile_y; _lastMoveAt = now; }
+    }
     private function moveDiag(now:int):void {
         if (_mv == null || _mv.diag || now - _mv.at < 1000 || now - _mv.at > 3000) return;
         var m:Object = me();
@@ -2801,7 +2804,9 @@ public class VlcmTrain {
     /** đang có lệnh đi chưa tới nơi (dùng để không ra buff / chiêu làm đứng lại giữa đường) */
     private function moving(now:int):Boolean {
         if (me().getStatus() == "walk") return true;
-        return _mv != null && now - _mv.at < 4000 && tileDist(me(), _mv.x, _mv.y) > 2;      // vừa gửi lệnh đi, chưa tới nơi
+        if (_mv == null || tileDist(me(), _mv.x, _mv.y) <= 2) return false;
+        // vừa gửi lệnh đi (chưa kịp bước), hoặc còn đang trên đường: vừa đổi ô trong 1,5s (trạng thái "walk" có lúc nháy sang khác giữa 2 đoạn đường)
+        return now - _mv.at < 1500 || now - _lastMoveAt < 1500;
     }
 
     private function revive():void {

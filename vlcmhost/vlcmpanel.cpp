@@ -369,7 +369,6 @@ struct Config {
     bool mcSkip = false;                     // Me Cung: bo qua ai chuot tang 15 + phong than bi (di thang toi cua/cong)
     int tqMinR = 15;                         // Thien Quan: can it nhat bay nhieu hoa moi vao
     bool dtJump = true;                      // Doanh Trai: nhay quanh quai
-    int dtJmax = 0;                          // Doanh Trai: tam nhay 0 = theo game (JUMP_MAX_DIS), 1 = 500 (thu, nhu ban cu)
     // moi pho ban: khung gio, dieu kien buff lien tram, dung sau ai N, roi khi khong co quai N phut
     bool pbTimeOn[5] = {}; int pbH1[5] = { 0, 0, 0, 0, 0 }, pbM1[5] = {}, pbH2[5] = { 23, 23, 23, 23, 23 }, pbM2[5] = { 59, 59, 59, 59, 59 };
     bool pbLzOn[5] = {}; int pbLzVal[5] = { 300, 400, 400, 300, 400 }, pbLzMin[5] = { 0, 20, 20, 15, 20 };
@@ -418,6 +417,7 @@ struct Acc {
     std::wstring pbSkip[5];                  // ly do bo qua pho ban (het luot / thieu hoa / khong vao duoc)
     DWORD pbWaitAt[5] = {};                  // SWF bao "pb wait" (chua du dieu kien lien tram): tam bo ra khoi danh sach 60s
     DWORD pbStartAt = 0;                     // lan gui pb_start gan nhat
+    DWORD pbPushAt = 0;                      // sua cai dat luc dang chay pho ban: gui pb_list (ap dung ngay) vao luc nay
     bool hostClosing = false;                // vlcmhost bao dang dong theo y nguoi dung (khong tu mo lai)
     DWORD relaunchAt = 0;                    // hen mo lai client sau khi tat bat thuong
     std::vector<DWORD> relaunches;           // cac lan tu mo lai (de ghi log; khong gioi han so lan)
@@ -592,7 +592,6 @@ static void SaveConfig(const Acc& a) {
     }
     IniPut(f, L"pb", L"tqminr", std::to_wstring(c.tqMinR));
     IniPut(f, L"pb", L"dtjump", B(c.dtJump));
-    IniPut(f, L"pb", L"dtjmax", std::to_wstring(c.dtJmax));
     IniPut(f, L"pb", L"ptjump", B(c.ptJump));
     IniPut(f, L"pb", L"ptbow", B(c.ptBow));
     IniPut(f, L"pb", L"mcfarm", std::to_wstring(c.mcFarm));
@@ -694,7 +693,6 @@ static void LoadConfig(Acc& a) {
     }
     c.tqMinR = (std::max)(0, ToInt(IniGet(f, L"pb", L"tqminr", L"15"), 15));
     c.dtJump = IniGet(f, L"pb", L"dtjump", L"1") == L"1";
-    c.dtJmax = ToInt(IniGet(f, L"pb", L"dtjmax", L"0"), 0) == 1 ? 1 : 0;
     c.ptJump = IniGet(f, L"pb", L"ptjump", L"1") == L"1";
     c.ptBow = IniGet(f, L"pb", L"ptbow", L"1") == L"1";
     c.mcFarm = (std::min)(16, (std::max)(0, ToInt(IniGet(f, L"pb", L"mcfarm", L"0"), 0)));
@@ -814,7 +812,6 @@ enum {
     // pho ban (TRAIN > PHO BAN)
     IDC_LBL_TQMINR, IDC_EDIT_TQMINR, IDC_CHK_DTJUMP, IDC_LBL_PBNOTE,
     IDC_CHK_PTJUMP, IDC_CHK_PTBOW, IDC_LBL_MCFARM, IDC_CMB_MCFARM, IDC_LBL_MCMIN, IDC_EDIT_MCMIN,
-    IDC_LBL_DTJMAX, IDC_CMB_DTJMAX,
     IDC_LBL_MCBY, IDC_CMB_MCBY, IDC_LBL_MCLZ, IDC_EDIT_MCLZ, IDC_CHK_MCSKIP,
     // hieu nang (tab chinh)
     IDC_PERFLIST, IDC_BTN_PERFRESET, IDC_LBL_PERFNOTE,
@@ -1156,7 +1153,7 @@ static std::wstring PbArgs(Acc* a) {
                              L" lt_lure=" + (c.ltLureOn ? L"1" : L"0") + L" lt_x=" + std::to_wstring(c.ltX) + L" lt_kpp=" + std::to_wstring(c.ltKpp) +
                              L" lt_pick=" + std::to_wstring(c.ltPick) + L" lt_skipboss=" + (c.ltSkipBoss ? L"1" : L"0");
         if (i == 1) extra += L" tq_minr=" + std::to_wstring(c.tqMinR);
-        if (i == 2) extra += std::wstring(L" dt_jump=") + (c.dtJump ? L"1" : L"0") + L" dt_jmax=" + (c.dtJmax == 1 ? L"500" : L"0");
+        if (i == 2) extra += std::wstring(L" dt_jump=") + (c.dtJump ? L"1" : L"0");
         if (i == 3) extra += std::wstring(L" pt_jump=") + (c.ptJump ? L"1" : L"0") + L" pt_bow=" + (c.ptBow ? L"1" : L"0");
         if (i == 4) {
             extra += L" mc_farm=" + std::to_wstring(c.mcFarm) + L" mc_farmmin=" + std::to_wstring(c.mcFarmMin)
@@ -1172,6 +1169,11 @@ static std::wstring PbArgs(Acc* a) {
     std::wstring on;                                            // moi pho ban dang tick (pb_list: chi thoat pho ban dang lam khi bo tick dung no)
     for (int i = 0; i < NPB; ++i) if (c.pbOn[i]) on += (on.empty() ? L"" : L",") + std::wstring(PB_KEY[i]);
     return L"list=" + list + L" on=" + on + extra + L" done=" + done + FightArgs(c);
+}
+
+/** sua cai dat luc dang chay pho ban: gom 1 giay roi gui pb_list (SWF ap dung ngay, khong dung pho ban) */
+static void PbLive(Acc* a) {
+    if (a && a->connected && a->st.inGame && a->st.state == L"pb") a->pbPushAt = GetTickCount() + 1000;
 }
 
 /** o trang thai canh "Danh quai": Chua lam / Dang cho / Dang lam / Dang nghi / Ve thanh */
@@ -1351,6 +1353,7 @@ static std::wstring ComboId(int ctl) {
 }
 static void SkillSetChanged(Acc* a) {
     SaveConfig(*a);
+    PbLive(a);
     if (a->cfg.enabled && a->connected && a->st.inGame && a->cfg.trainSet == g_skSet) a->restartAt = GetTickCount() + 1500;
     RefreshSkillPage();
 }
@@ -1431,7 +1434,7 @@ static void LoadUI() {
     for (int i = 0; i < NPB; ++i) { SetText(IDC_EDIT_PBRUNS0 + i, std::to_wstring(c.pbRange[i])); SetText(IDC_EDIT_PBREV0 + i, std::to_wstring(c.pbRev[i])); }
     Check(PBX(1, PX_TQAFK), c.tqAfk); Check(PBX(1, PX_TQBC), c.tqBossCount);
     for (int i = 0; i < NPB; ++i) SetSel(PBX(i, PX_SET), c.pbSet[i] + 1);
-    SetText(IDC_EDIT_TQMINR, std::to_wstring(c.tqMinR)); Check(IDC_CHK_DTJUMP, c.dtJump); SetSel(IDC_CMB_DTJMAX, c.dtJmax);
+    SetText(IDC_EDIT_TQMINR, std::to_wstring(c.tqMinR)); Check(IDC_CHK_DTJUMP, c.dtJump);
     Check(IDC_CHK_PTJUMP, c.ptJump); Check(IDC_CHK_PTBOW, c.ptBow);
     SetSel(IDC_CMB_MCFARM, c.mcFarm); SetText(IDC_EDIT_MCMIN, std::to_wstring(c.mcFarmMin));
     SetSel(IDC_CMB_MCBY, c.mcFarmBy); SetText(IDC_EDIT_MCLZ, std::to_wstring(c.mcFarmLz)); Check(IDC_CHK_MCSKIP, c.mcSkip); SetSel(IDC_CMB_HIDELV, c.hideLevel == 2 ? 1 : 0);
@@ -1489,7 +1492,7 @@ static void ReadUI(Config& c) {
         c.pbRange[i] = (std::min)(999, (std::max)(1, ToInt(GetText(IDC_EDIT_PBRUNS0 + i), 99)));
         c.pbRev[i] = (std::max)(0, ToInt(GetText(IDC_EDIT_PBREV0 + i), 2));
     }
-    c.tqMinR = (std::max)(0, ToInt(GetText(IDC_EDIT_TQMINR), 15)); c.dtJump = Checked(IDC_CHK_DTJUMP); c.dtJmax = CurSel(IDC_CMB_DTJMAX) == 1 ? 1 : 0;
+    c.tqMinR = (std::max)(0, ToInt(GetText(IDC_EDIT_TQMINR), 15)); c.dtJump = Checked(IDC_CHK_DTJUMP);
     c.ptJump = Checked(IDC_CHK_PTJUMP); c.ptBow = Checked(IDC_CHK_PTBOW);
     c.mcFarm = (std::max)(0, CurSel(IDC_CMB_MCFARM)); c.mcFarmMin = (std::max)(1, ToInt(GetText(IDC_EDIT_MCMIN), 10));
     c.mcFarmBy = CurSel(IDC_CMB_MCBY) == 1 ? 1 : 0; c.mcFarmLz = (std::max)(1, ToInt(GetText(IDC_EDIT_MCLZ), 300)); c.mcSkip = Checked(IDC_CHK_MCSKIP); c.hideLevel = CurSel(IDC_CMB_HIDELV) == 1 ? 2 : 1;
@@ -2158,6 +2161,10 @@ static void Tick() {
             SendCmd(a, L"pause", std::wstring(L"util_pause on=") + (a->active ? L"0" : L"1"));
         }
         PbDayCheck(a);
+        if (a->pbPushAt && now >= a->pbPushAt) {               // cai dat vua sua: ap dung ngay cho pho ban dang chay
+            a->pbPushAt = 0;
+            if (a->active && a->st.inGame && a->st.state == L"pb") { SendCmd(a, L"pblist", L"pb_list live=1 " + PbArgs(a)); a->pbStartAt = now; }
+        }
         if (a->active && a->st.inGame) {
             bool want = PbWanted(a);
             if (want && a->st.state != L"pb" && now - a->pbStartAt > 10000) { a->pbStartAt = now; SendCmd(a, L"pbstart", L"pb_start " + PbArgs(a)); }
@@ -2218,6 +2225,7 @@ static void ConfigChanged(bool trainPart = true) {
     ReadUI(a->cfg);
     SaveConfig(*a);
     if (!trainPart) { if (a->connected && a->st.inGame) SendUtil(a); return; }
+    PbLive(a);                                                  // nhat / ky nang dung chung cho pho ban
     if (a->cfg.enabled && a->connected && a->st.inGame) a->restartAt = GetTickCount() + 1500;   // gom nhieu lan sua
 }
 static void UtilChanged() { ConfigChanged(false); }
@@ -2315,8 +2323,7 @@ static void Layout() {
             if (i == 1) { Move(IDC_LBL_TQMINR, px, y2 + 3, 230, 20); Move(IDC_EDIT_TQMINR, px + 235, y2, E, 22); y2 += rh;
                           Move(PBX(1, PX_TQAFK), px, y2, pw, 24); y2 += rh;
                           Move(PBX(1, PX_TQBC), px, y2, pw, 24); y2 += rh; }
-            if (i == 2) { Move(IDC_CHK_DTJUMP, px, y2, pw, 24); y2 += rh;
-                          Move(IDC_LBL_DTJMAX, px + 22, y2 + 3, 70, 20); Move(IDC_CMB_DTJMAX, px + 95, y2, (std::min)(360, pw - 95), 200); y2 += rh; }
+            if (i == 2) { Move(IDC_CHK_DTJUMP, px, y2, pw, 24); y2 += rh; }
             if (i == 3) { Move(IDC_CHK_PTJUMP, px, y2, pw, 24); y2 += rh; Move(IDC_CHK_PTBOW, px, y2, pw, 24); y2 += rh; }
             if (i == 4) { Move(IDC_LBL_MCFARM, px, y2 + 3, 230, 20); Move(IDC_CMB_MCFARM, px + 235, y2, 110, 300); y2 += rh;
                           Move(IDC_LBL_MCBY, px + 22, y2 + 3, 110, 20); Move(IDC_CMB_MCBY, px + 135, y2, 170, 200); y2 += rh;
@@ -2607,9 +2614,7 @@ static void CreateUI() {
         if (i == 1) { Label(IDC_LBL_TQMINR, L"Làm khi đủ (hoa hồng):", P); Edit(IDC_EDIT_TQMINR, P, ES_NUMBER);
                       Box(PBX(1, PX_TQAFK), L"Đi hết vòng tuần không thấy quái (cổng chưa mở): bật treo máy của game, phạm vi 99, tối đa 3 phút", P);
                       Box(PBX(1, PX_TQBC), L"Bỏ qua đánh Boss ở trạng thái đếm số (boss mang buff bất tử / bảo hộ)", P); }
-        if (i == 2) { Box(IDC_CHK_DTJUMP, L"Nhảy quanh quái ở mọi ải (ải game cho nhảy, cần thể lực >= 20)", P);
-                      Label(IDC_LBL_DTJMAX, L"Tầm nhảy:", P);
-                      Combo(IDC_CMB_DTJMAX, P, { L"Theo game (JUMP_MAX_DIS, mặc định 8 ô) — như bot gốc", L"500 (thử nghiệm, như bản cũ)" }); }
+        if (i == 2) Box(IDC_CHK_DTJUMP, L"Nhảy quanh quái ở mọi ải (ải game cho nhảy, cần thể lực >= 20)", P);
         if (i == 3) { Box(IDC_CHK_PTJUMP, L"Nhảy khi đánh Khôi Khôi (lúc boss vào trạng thái đặc biệt)", P); Box(IDC_CHK_PTBOW, L"Xong thì bật lại cung", P); }
         if (i == 4) {
             Label(IDC_LBL_MCFARM, L"Dừng lại treo quái (tại 76,51) ở:", P);
@@ -3105,7 +3110,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         Acc* a = Sel();
         if (id >= IDC_CHK_GS0 && id < IDC_CHK_GS0 + 13) { if (code == BN_CLICKED) UtilChanged(); return 0; }
         if (id >= PBX(0, 0) && id < PBX(NPB, 0)) {          // khung cai dat pho ban
-            if ((code == EN_CHANGE || code == BN_CLICKED || code == CBN_SELCHANGE) && !g_loading && a) { ReadUI(a->cfg); SaveConfig(*a); RefreshTrainState(); }
+            if ((code == EN_CHANGE || code == BN_CLICKED || code == CBN_SELCHANGE) && !g_loading && a) { ReadUI(a->cfg); SaveConfig(*a); PbLive(a); RefreshTrainState(); }
             if (code == EN_SETFOCUS) PostMessageW((HWND)lp, EM_SETSEL, 0, -1);
             return 0;
         }
@@ -3133,14 +3138,14 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         case IDC_EDIT_PBRUNS0: case IDC_EDIT_PBRUNS0 + 1: case IDC_EDIT_PBRUNS0 + 2: case IDC_EDIT_PBRUNS0 + 3: case IDC_EDIT_PBRUNS0 + 4:
         case IDC_EDIT_PBREV0: case IDC_EDIT_PBREV0 + 1: case IDC_EDIT_PBREV0 + 2: case IDC_EDIT_PBREV0 + 3: case IDC_EDIT_PBREV0 + 4:
         case IDC_EDIT_TQMINR: case IDC_EDIT_MCMIN: case IDC_EDIT_MCLZ:
-            if (code == EN_CHANGE && !g_loading && a) { ReadUI(a->cfg); SaveConfig(*a); RefreshTrainState(); }
+            if (code == EN_CHANGE && !g_loading && a) { ReadUI(a->cfg); SaveConfig(*a); PbLive(a); RefreshTrainState(); }
             if (code == EN_SETFOCUS) PostMessageW((HWND)lp, EM_SETSEL, 0, -1);
             return 0;
         case IDC_CHK_DTJUMP: case IDC_CHK_PTJUMP: case IDC_CHK_PTBOW: case IDC_CHK_MCSKIP:
-            if (code == BN_CLICKED && !g_loading && a) { ReadUI(a->cfg); SaveConfig(*a); }
+            if (code == BN_CLICKED && !g_loading && a) { ReadUI(a->cfg); SaveConfig(*a); PbLive(a); }
             return 0;
-        case IDC_CMB_MCFARM: case IDC_CMB_DTJMAX: case IDC_CMB_MCBY:
-            if (code == CBN_SELCHANGE && !g_loading && a) { ReadUI(a->cfg); SaveConfig(*a); }
+        case IDC_CMB_MCFARM: case IDC_CMB_MCBY:
+            if (code == CBN_SELCHANGE && !g_loading && a) { ReadUI(a->cfg); SaveConfig(*a); PbLive(a); }
             return 0;
         case IDC_BTN_GEAR:
             g_pbPane = -1; TabCtrl_SetCurSel(g_tabMain, 1); TabCtrl_SetCurSel(g_tabTrain, 1); UpdatePages();
@@ -3321,6 +3326,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 SaveConfig(*o);
                 if (o->connected && o->st.inGame) SendUtil(o.get());
                 if (o->cfg.enabled && o->connected && o->st.inGame) o->restartAt = GetTickCount() + 1500;
+                PbLive(o.get());
             }
             AddLog(a, L"Đã áp dụng cài đặt cho " + std::to_wstring(g_accs.size() - 1) + L" acc khác");
             return 0;

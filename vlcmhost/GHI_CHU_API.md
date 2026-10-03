@@ -1,6 +1,6 @@
 ﻿# GHI CHÚ API — VLCM (Mộng Chí Tôn, TePayLink)
 
-Cập nhật: 03-10-2026 (bản 03-10c: thứ tự phó bản, nhảy mọi ải + chọn tầm nhảy Doanh Trại, Mê Cung leo tầng/treo quái; còn lại trong danh sách chờ sửa). Gửi file này (hoặc cả vlcmhost_train.zip) ở đầu mỗi cuộc trò chuyện mới.
+Cập nhật: 03-10-2026 (bản 03-10d: thứ tự phó bản, nhảy mọi ải Doanh Trại theo tầm game, Mê Cung leo tầng/treo quái, áp dụng cài đặt ngay, đi tuần không bị buff chặn; còn lại trong danh sách chờ sửa). Gửi file này (hoặc cả vlcmhost_train.zip) ở đầu mỗi cuộc trò chuyện mới.
 Ký hiệu: **[đã xác minh]** = chạy được trên game thật hoặc đọc rõ trong mã TGame; **[mock]** = mới chạy trên game giả lập;
 **[đoán]** = suy ra, chưa kiểm tra.
 
@@ -165,9 +165,9 @@ Doanh Trại dùng chung luồng `pbInStep` với Thiên Quan.
 - B2. Nhảy (`pbJump`):
   - **[đã sửa 03-10a]** nhảy ở mọi ải Doanh Trại (bỏ `PB_JUMP_MAPS`); giữ điều kiện game: thể lực ≥ 20, không bị trói/định thân, `MapRes.allowJump`.
     Ải game không cho nhảy: bỏ qua, log 1 lần `info pb map <id> game không cho nhảy`. Ải chuột vẫn không nhảy (luồng chuột riêng).
-  - **[03-10b]** Tầm nhảy chọn được (`dt_jmax`): `0` = theo game `OtherConst.JUMP_MAX_DIS` (không đọc được thì 8), bỏ điểm đáp ngoài tầm như bot gốc — **mặc định**;
-    `500` = như bản cũ, không lọc (thử nghiệm). Phu Tử (boss Khôi Khôi) giữ 500 như cũ. OtherConst: tên gói **[đoán]** `com.tgame.common::OtherConst`, sai thì loader tìm theo tên ngắn.
-    Log mỗi 30s: `info nhảy [chế độ] N lần: đáp đúng / lệch-bị kéo / không nhảy; xa nhất; số lần > 8 ô; thể lực giảm trung bình (1,2s sau, đã gồm hồi)` — để so sánh 2 chế độ.
+  - **[03-10d]** Tầm nhảy Doanh Trại: theo game `OtherConst.JUMP_MAX_DIS` (không đọc được thì 8), bỏ điểm đáp ngoài tầm như bot gốc.
+    Chế độ thử 500 (03-10b) và log thống kê nhảy **đã bỏ** theo yêu cầu Hain. Phu Tử (boss Khôi Khôi) giữ 500 như cũ.
+    OtherConst: tên gói **[đoán]** `com.tgame.common::OtherConst`, sai thì loader tìm theo tên ngắn.
   - còn treo: nhảy mỗi 0,5 giây gọi `MainCharSeachPathManager.clear()`, chen vào lúc đánh/tiến lại gần;
     đề xuất: chỉ nhảy lúc rảnh, hoặc giãn ra 2–3 giây (chờ chốt), và ghi vào log "spam đi". Liên quan B3 (nhảy mọi ải → B3 dễ gặp hơn).
 - B3. **Bỏ quái gần, chạy đánh quái xa** (Hain báo 03-10). Nghi theo thứ tự:
@@ -220,7 +220,10 @@ Doanh Trại dùng chung luồng `pbInStep` với Thiên Quan.
     - Hain xác nhận: tầng 15 ải chuột và phòng thần bí **không cần giết hết vẫn qua được** → bỏ qua là đi thẳng, không cần phương án dự phòng;
   - tầng treo: nhặt đồ rơi theo **cài đặt nhặt của Đánh quái** (pick off/list/all + danh sách), trong phạm vi quanh (76,51).
 
-**Áp dụng cài đặt ngay khi sửa trên panel** (Hain báo 03-10, chờ lệnh sửa)
+**Áp dụng cài đặt ngay khi sửa trên panel** (Hain báo 03-10) — **[đã sửa 03-10d]**
+- Đã làm: panel `PbLive` (sửa khung phó bản, kỹ năng, hỗ trợ, nhặt, "áp dụng cho acc khác" lúc đang chạy phó bản) → gom 1s → `pb_list live=1`;
+  SWF `pbList`: áp `applyFightCfg` chung + thay `_pbRun.cfg` bằng cài đặt mới + áp bộ kỹ năng riêng; log `pb cài đặt mới (áp dụng ngay cho <k>): <mục đổi>`.
+  Chỉ số tuyến / thời điểm bắt đầu treo nằm trong `_pbRun` nên không bị đặt lại.
 - Hain muốn: **mọi** thay đổi trên panel được cập nhật cho tool ngay, kể cả lúc đang treo / đang chạy phó bản.
 - Hiện tại (đọc code panel):
   - Tiện ích (thuốc, sửa đồ, bán/hủy, cài đặt game…): đã gửi `util_set` ngay khi sửa → có hiệu lực ngay.
@@ -230,6 +233,14 @@ Doanh Trại dùng chung luồng `pbInStep` với Thiên Quan.
   - panel: sửa bất kỳ cài đặt phó bản / kỹ năng / nhặt lúc đang chạy phó bản → gom 1 giây rồi gửi `pb_list` (không dừng phó bản);
   - SWF `pb_list`: cập nhật cả cài đặt của lượt đang chạy (`_pbRun.cfg`) và áp lại bộ kỹ năng/hỗ trợ/nhặt ngay; log 1 dòng "đã cập nhật cài đặt: …" liệt kê mục đổi;
   - các mục đổi giữa chừng phải an toàn: tuyến/điểm tuần giữ chỉ số hiện tại; mốc liên trảm / số phút treo xét lại ở nhịp kế (hạ dưới mức hiện tại thì ngưng ngay); số phút tính từ lúc bắt đầu treo.
+
+**Đi tuần bị buff chặn** (Hain báo 03-10, log Thiên Quan "điểm (74,57) không tới được" 2s sau buff) — **[đã sửa 03-10d]**
+- Nguyên nhân: buff → game `stopMove`; `moveTo` chặn gửi lại cùng đích 4s nếu "đã nhích kể từ lệnh trước"; `goPoint` 1,5s không lại gần đã bỏ điểm.
+  `moving()` chỉ coi là đang đi khi status walk hoặc lệnh < 4s → đường dài, status nháy khác "walk" là buff chen vào.
+- Sửa: `trackMove` (lần cuối đổi ô); `moving()` = walk, hoặc còn lệnh đi chưa tới (> 2 ô) và (lệnh < 1,5s hoặc vừa đổi ô < 1,5s);
+  `moveTo` chỉ chặn gửi lại khi đang đi thật (walk / đổi ô trong 1s); buff/heal xong xóa `_mv`, `run.moveAt = 0`, lùi mốc `gp.prog` 1s;
+  `goPoint` chỉ báo "không tới được" khi đã gửi lệnh đi ≥ 1,5s trước và 2,5s không lại gần.
+- Còn khả năng: Thiên Quan dùng 1 tuyến chung 13 tầng — nếu (74,57) vẫn báo hỏng mà không có buff ngay trước thì do tuyến (cần tuyến riêng tầng đó).
 
 **Phu Tử**
 - E1. Quái theo thứ tự có thể kẹt vĩnh viễn (giống B1): `run.ptTarget` được gán lại sau khi bị bỏ, và lúc tìm không bỏ qua `_black`. Sửa: bỏ con đó, tìm con cùng tên khác; chỉ còn đúng con đó thì đi tuần một vòng rồi thử lại.
