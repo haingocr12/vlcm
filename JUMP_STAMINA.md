@@ -71,3 +71,16 @@ Tham số thứ 4 cũng khác: bot gốc truyền `jumpMax = OtherConst.JUMP_MAX
 2. Như trên nhưng tham số thứ 4 = 500.
 3. Nhảy khi đang `isJumping()` (nhảy tầng 2).
 4. `10063 [x,y,x,y,1,t]` (nhảy tại chỗ, như "nhảy khi train").
+
+## 7. Cập nhật sau phản hồi từ người dùng
+
+- Người dùng xác nhận: không có Lăng Ba Vi Bộ thì **không có nhảy nhiều tầng**. Giả thuyết "chỉ nhảy tầng 1 nên miễn phí" bị **loại**.
+- Hiện tượng: trong **Doanh Trại**, bot gốc nhảy **quanh quái** mà không tốn thể lực.
+- Cú nhảy quanh quái (có di chuyển) **chỉ** đến từ `charJump(mc, p, -1, jumpMax, null, false, false)`. Gói `10063 [x,y,x,y,1,t]` không làm nhân vật di chuyển.
+- Timer gửi `10063` (`§-&§`, 700 ms) bắt đầu chạy từ lúc tải cấu hình nhân vật (`methon_01/02/03`), **chạy cả trong phó bản**, và chỉ dừng khi bắt đầu vận tiêu bang. Nó chỉ gửi gói khi bật ô " nhảy khi khi train " (`var_nhay1`, **mặc định tắt**).
+- Không tải được client game (`TGame.tse`) để đọc `charJump`: mạng của môi trường phân tích chặn các domain của game.
+
+Các khả năng còn lại, cần thử trên game thật:
+1. **Luật của map Doanh Trại:** nhảy ở đó vốn không tốn thể lực. Kiểm tra bằng Shift+click nhảy tay trong Doanh Trại.
+2. **Tham số `charJump`:** `-1` (tham số 3) hoặc `false, false` (tham số 6, 7) khiến client nhảy theo đường không trừ thể lực. Kiểm tra bằng cách gọi đúng bộ tham số này ở map thường.
+3. **Nhảy tại chỗ `10063`** (nếu đã tick "nhảy khi train") làm thay đổi trạng thái phía server, khiến các cú nhảy khác không bị trừ. Kiểm tra bằng cách tắt/bật ô này rồi so thể lực.
