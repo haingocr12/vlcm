@@ -211,7 +211,11 @@ Doanh Trại dùng chung luồng `pbInStep` với Thiên Quan.
   - tầng treo chỉ đánh quái trong tầm đánh quanh (76,51); bị đẩy xa > 3 ô thì quay về;
   - panel: ô chọn "Ngưng treo khi: hết N phút / đạt liên trảm X";
   - pb_start thêm `mc_farmby=min|lz` và `mc_farmlz=X`.
-- Còn hỏi: leo tầng có còn nhặt túi gần không? Ải chuột tầng 15 / phòng thần bí giữ như cũ? Tầng treo có nhặt đồ rơi quanh (76,51) không?
+- **Chốt thêm (03-10):**
+  - leo tầng **không nhặt gì**;
+  - ải chuột tầng 15 / phòng thần bí: giữ như cũ, **thêm ô tick "bỏ qua ải chuột và phòng thần bí"** → không đánh, đi thẳng tới cổng/cửa;
+    - cần kiểm trên game thật: cổng tầng 15 có mở khi chưa giết chuột không; nếu không, tool sẽ log rồi quay lại đánh chuột như cũ (tránh đánh dấu nhầm cửa sai);
+  - tầng treo: nhặt đồ rơi theo **cài đặt nhặt của Đánh quái** (pick off/list/all + danh sách), trong phạm vi quanh (76,51).
 
 **Phu Tử**
 - E1. Quái theo thứ tự có thể kẹt vĩnh viễn (giống B1): `run.ptTarget` được gán lại sau khi bị bỏ, và lúc tìm không bỏ qua `_black`. Sửa: bỏ con đó, tìm con cùng tên khác; chỉ còn đúng con đó thì đi tuần một vòng rồi thử lại.
