@@ -275,6 +275,19 @@ Doanh Trại dùng chung luồng `pbInStep` với Thiên Quan.
   không gửi `mc` trong `list=`; đang trong Mê Cung lúc qua nửa đêm thì vẫn làm nốt lượt. Nên làm dạng bảng ngày mở cho mọi phó bản (mặc định Mê Cung 3/5/7, còn lại mọi ngày).
 - Còn hỏi: game đổi ngày lúc 0h hay giờ khác (vd 5h)? Giờ máy có khớp giờ server không?
 
+**Mê Cung thần bí 2 — sóc báu** (Hain báo 03-10, chờ lệnh sửa)
+- Hain báo: Mê Cung có thể vào "ải mê cung thần bí 2"; có 1 con **sóc báu chạy quanh map** → tool phải quét vị trí liên tục, đuổi theo và đánh.
+  Tick "bỏ qua ải chuột và phòng thần bí" thì bỏ qua cả ải này (đi thẳng ra cổng).
+- Hiện tại nhân vật **đứng yên** khi vào ải này. Nguyên nhân trong code: map ải này không có trong danh sách map Mê Cung (`PB_DEF.mc.maps`, chỉ có 20033, 20177–20192)
+  → `pbInStep` thấy "không phải map của phó bản đang chạy" và không làm gì (chỉ xử lý khi về Tương Dương).
+- Dự kiến:
+  - nhận ải này theo map ID (cần Hain cho) và dự phòng: đang chạy Mê Cung mà vào một map phó bản lạ (`isFuben`) → coi là phòng thần bí, log map ID để bổ sung;
+  - không bỏ qua: mỗi nhịp tìm lại con sóc theo tên (chứa "sóc"), đuổi theo bằng lệnh đi tới đúng vị trí hiện tại của nó (cập nhật khi nó chạy > 2 ô), trong tầm thì ra chiêu;
+    không thấy sóc thì đi tuần quanh map; sóc chết → nhặt đồ rơi rồi ra cổng; chưa có tuyến thì dùng các điểm chia đều bản đồ;
+  - bỏ qua (tick): đi thẳng tới cổng ra như phòng thần bí 1 (`mcSecretExit`).
+- Còn hỏi: map ID (hoặc tên map hiện trên game) của ải thần bí 2; tên chính xác con sóc ("Sóc Báu"?); ra khỏi ải bằng cổng hay tự đưa ra khi giết xong;
+  sóc có bị khống chế / chậm lại không (để biết có cần nhảy hoặc skill khống chế).
+
 **Phu Tử**
 - E1. Quái theo thứ tự có thể kẹt vĩnh viễn (giống B1): `run.ptTarget` được gán lại sau khi bị bỏ, và lúc tìm không bỏ qua `_black`. Sửa: bỏ con đó, tìm con cùng tên khác; chỉ còn đúng con đó thì đi tuần một vòng rồi thử lại.
 - E2. Giết đúng con theo thứ tự không tính kill, không chờ đồ rơi. Sửa: tính kill + chờ đồ rơi 1 giây.
