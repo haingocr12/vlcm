@@ -2612,7 +2612,7 @@ static void CreateUI() {
             Box(PBX(0, PX_LTSKIP), L"Bỏ qua đánh BOSS (đạt mốc thì ra khỏi phó bản)", P);
         }
         if (i == 1) { Label(IDC_LBL_TQMINR, L"Làm khi đủ (hoa hồng):", P); Edit(IDC_EDIT_TQMINR, P, ES_NUMBER);
-                      Box(PBX(1, PX_TQAFK), L"Đi hết vòng tuần không thấy quái (cổng chưa mở): bật treo máy của game, phạm vi 99, tối đa 3 phút", P);
+                      Box(PBX(1, PX_TQAFK), L"Đi hết vòng tuần không thấy quái (cổng chưa mở): bật treo máy của game, phạm vi 99, mỗi lần tối đa 3 phút rồi tự tìm quái tiếp", P);
                       Box(PBX(1, PX_TQBC), L"Bỏ qua đánh Boss ở trạng thái đếm số (boss mang buff bất tử / bảo hộ)", P); }
         if (i == 2) Box(IDC_CHK_DTJUMP, L"Nhảy quanh quái ở mọi ải (ải game cho nhảy, cần thể lực >= 20)", P);
         if (i == 3) { Box(IDC_CHK_PTJUMP, L"Nhảy khi đánh Khôi Khôi (lúc boss vào trạng thái đặc biệt)", P); Box(IDC_CHK_PTBOW, L"Xong thì bật lại cung", P); }

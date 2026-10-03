@@ -71,6 +71,8 @@ public class VlcmTrain {
     private static const WALK_RETRY:int = 5000;
     private static const TARGET_GIVEUP:int = 20000;
     private static const BLACKLIST_MS:int = 60000;
+    private static const TARGET_HARDCAP:int = 45000;   // chốt cứng: 45s kể từ lúc chọn mà máu chưa giảm lần nào (vd. sau vật cản)
+    private var _hpTgtId:int = -1, _hpDropAt:int = 0;
     private static const REVIVE_FIRST:int = 2000;
     private static const REVIVE_RETRY:int = 8000;
     private static const REVIVE_MAX:int = 6;
@@ -524,11 +526,19 @@ public class VlcmTrain {
             gi().lockOnChar = _target;
         }
         _lastEligible = now;
-        // bỏ mục tiêu chỉ khi đánh KHÔNG hiệu quả: 20s máu không giảm (boss thì không bao giờ bỏ)
+        // bỏ mục tiêu chỉ khi đánh KHÔNG hiệu quả: 20s ĐANG ĐÁNH mà máu không giảm (boss thì không bao giờ bỏ).
+        // Chỉ đếm lúc đang đánh thật vào con đó: còn đi lại gần / đang đi / bị khống chế / vừa buff-heal thì đồng hồ đứng yên.
         var hp:Number = mobHp(_target);
-        if (hp >= 0 && (_targetHp < 0 || hp < _targetHp)) { _targetHp = hp; _targetSince = now; }
-        if (now - _targetSince > TARGET_GIVEUP && !isBossMob(_target)) {
-            _black[_target.id] = now + BLACKLIST_MS;
+        if (_hpTgtId != _target.id) { _hpTgtId = _target.id; _hpDropAt = now; }
+        if (hp >= 0 && (_targetHp < 0 || hp < _targetHp)) { _targetHp = hp; _targetSince = now; _hpDropAt = now; }
+        if (_oor || me().getStatus() == "walk" || charFixed() || now - _lastSupport < 1500) _targetSince = now;
+        var giveUp:String = null;
+        if (now - _targetSince > TARGET_GIVEUP) giveUp = int(TARGET_GIVEUP / 1000) + " giây đánh mà máu không giảm";
+        else if (now - _hpDropAt > TARGET_HARDCAP) giveUp = int(TARGET_HARDCAP / 1000) + " giây kể từ lúc chọn mà máu không giảm";
+        if (giveUp && !isBossMob(_target)) {
+            var ban:int = _state == PB ? 10000 : BLACKLIST_MS;
+            _black[_target.id] = now + ban;
+            _emit("train", "info bỏ quái #" + _target.id + " cách " + tileDist(me(), _target.tile_x, _target.tile_y).toFixed(1) + " ô: " + giveUp + " — bỏ qua " + int(ban / 1000) + " giây");
             _target = null;
             return;
         }
@@ -817,18 +827,24 @@ public class VlcmTrain {
         var t:Object = _target;
         if (t == null) return;
         var d:Number = tileDist(me(), t.tile_x, t.tile_y);
-        if (_ap == null || _ap.t != t) _ap = { t: t, best: d, prog: now, at: 0, x: -999, y: -999 };
+        if (_ap == null || _ap.t != t) _ap = { t: t, best: d, prog: now, at: 0, x: -999, y: -999, tx0: t.tile_x, ty0: t.tile_y };
         if (d < _ap.best - 0.5 || busyAnim(me())) { if (d < _ap.best) _ap.best = d; _ap.prog = now; }
         if (now - _ap.prog > 1500 && isBossMob(t)) {                      // boss (hất văng / nhảy): không bỏ, ra chiêu nhắm boss, game tự đi tới
+            _forceId = t.id; _forceAt = now; _ap.prog = now; _ap.at = 0;
+            return;
+        }
+        // quái đã ở gần (<= 6 ô) hoặc đang di chuyển (aggro, đuổi theo): không bỏ — ra chiêu nhắm thẳng, game tự đi tới
+        if (now - _ap.prog > 1500 && (d <= AP_NEAR || Math.abs(t.tile_x - _ap.tx0) + Math.abs(t.tile_y - _ap.ty0) >= 2)) {
             _forceId = t.id; _forceAt = now; _ap.prog = now; _ap.at = 0;
             return;
         }
         if (now - _ap.prog > 1500) {
             var n:int = int(_blackN[t.id]) + 1;
             _blackN[t.id] = n;
-            _black[t.id] = now + (n >= 2 ? 600000 : 10000);              // lần 2 không tới được: bỏ con đó 10 phút
-            if (n >= 2) _emit("train", "info quái #" + t.id + " 2 lần không lại gần được (sau vật cản?) — bỏ qua con này");
-            else if (now - _apWarnAt > 30000) { _apWarnAt = now; _emit("train", "info quái #" + t.id + " cách " + d.toFixed(1) + " ô, 1,5 giây không lại gần được — bỏ qua 10 giây"); }
+            var ban:int = _state == PB || n < 2 ? 10000 : 600000;        // phó bản: tối đa 10s; train: lần 2 không tới được bỏ 10 phút
+            _black[t.id] = now + ban;
+            _emit("train", "info bỏ quái #" + t.id + " cách " + d.toFixed(1) + " ô: 1,5 giây không lại gần được (lần " + n + ") — bỏ qua "
+                  + (ban >= 60000 ? int(ban / 60000) + " phút" : int(ban / 1000) + " giây"));
             _target = null; gi().lockOnChar = null; _ap = null;
             return;
         }
@@ -842,7 +858,7 @@ public class VlcmTrain {
             if (moveTo(curMap(), t.tile_x, t.tile_y, stop, "tới quái")) { _ap.at = now; _ap.x = t.tile_x; _ap.y = t.tile_y; _ap.mx = me().tile_x; _ap.my = me().tile_y; }
         }
     }
-    private var _apWarnAt:int = -60000;
+    private static const AP_NEAR:Number = 6;     // quái trong 6 ô: không bao giờ bỏ vì "không lại gần được"
     private var _blackN:Object = {};
     private var _forceId:int = -1, _forceAt:int = 0;  // quái được "coi như trong tầm" (đi lại gần không nhích)           // số lần quái bị bỏ vì không lại gần được
 
@@ -1108,8 +1124,7 @@ public class VlcmTrain {
     private static const PB_R:int = 20;                   // bán kính tìm quái / túi quanh nhân vật trong phó bản
     private static const PB_QUIET:int = 1000;             // không có mục tiêu 1s -> coi là yên
     private static const PB_HOLD:int = 12;                // giữ mục tiêu tới khi nó cách > 12 ô
-    private static const PB_FLOOR_STUCK:int = 90000;      // một tầng 90s không tiến -> thoát, thất bại
-    private static const PB_RUN_MAX:int = 25 * 60000;     // cả lượt tối đa 25 phút
+    private static const PB_FLOOR_STUCK:int = 90000;      // một tầng 90s không tiến -> gỡ kẹt (không thoát: chỉ game tự đẩy ra khi hết giờ)
     private static const PB_JUMP_GAP:int = 500;
     private static const PB_JUMP_OFS:Array = [[3,0],[-3,0],[0,3],[0,-3],[2,2],[2,-2],[-2,2],[-2,-2],[4,1],[-4,1],[1,4],[1,-4]];
     private static const PB_DEF:Object = {
@@ -1528,13 +1543,12 @@ public class VlcmTrain {
         }
         if (_pbDoneAt > 0) { _pbPhase = "reward"; _pbAt = now; _target = null; return; }
         if (run.unpick) { pbExit("bỏ tick phó bản đang chạy"); return; }
-        if (now - run.start > PB_RUN_MAX) { pbExit("quá " + int(PB_RUN_MAX / 60000) + " phút"); return; }
         _fast = false; _pbNoBoss = false;
         if (anyMob()) run.mobSeenAt = now;
         if (run.cfg.nomob > 0 && now - run.mobSeenAt > run.cfg.nomob * 60000) { pbExit("không có quái trong " + run.cfg.nomob + " phút"); return; }
         var fl:int = (def.maps as Array).indexOf(here);
         if (run.key == "mc") {
-            if (now - run.progressAt > PB_FLOOR_STUCK) { pbExit("kẹt ở mê cung"); return; }
+            if (now - run.progressAt > PB_FLOOR_STUCK) pbUnstick(run, now, "mê cung phòng " + (MC_ROOMS.indexOf(here) + 1));
             mcStep(run, now); return;
         }
         if (fl != run.floor || here != run.floorMap) {                  // vào tầng / ải mới
@@ -1542,11 +1556,11 @@ public class VlcmTrain {
             run.lapFound = false; run.lapEmpty = false; run.boss = false; run.moveAt = 0; run.progressAt = now; _pbGateAt = -1;
             run.mouse = false; run.mouseDone = false; run.mouseTarget = null; run.mobSeenAt = now;
             run.noTgtAt = -1; run.goingGate = false; run.atGate = 0; run.s51At = 0; run.gateLogged = false; run.afkTried = false;
-            _target = null; _ap = null; _pp = null;
+            _target = null; _ap = null; _pp = null; _black = {}; _blackN = {};
             _emit("train", "pb floor " + run.key + " " + (fl + 1) + "/" + def.maps.length + " map " + here);
             if (run.cfg.sf > 0 && fl >= run.cfg.sf) { pbExit("đã qua ải " + run.cfg.sf + ", dừng phó bản theo cài đặt", true); return; }
         }
-        if (now - run.floorAt > PB_FLOOR_STUCK && now - run.progressAt > PB_FLOOR_STUCK) { pbExit("kẹt ở tầng " + (fl + 1)); return; }
+        if (now - run.floorAt > PB_FLOOR_STUCK && now - run.progressAt > PB_FLOOR_STUCK) pbUnstick(run, now, "tầng " + (fl + 1));
         if (run.key == "pt") { ptStep(run, now); return; }
         if (run.key == "lt") { ltStep(run, now); return; }
         if (pbMouseStep(run, now, run.cfg.route)) return;             // ải chuột (vd. Doanh Trại ải 5)
@@ -1592,6 +1606,11 @@ public class VlcmTrain {
         }
         if (mob) {
             run.noTgtAt = -1; run.noTarget = 0; run.lapFound = true; run.progressAt = now; run.goingGate = false;
+            if (_target == null && run.patrolling) {                     // vừa thấy quái lúc đang đi tuần: hủy đường tuần, quay sang đánh
+                run.patrolling = false; run.gp = null;
+                try { _c.MainCharSeachPathManager.clear(); me().stopMove(); } catch (e3:Error) { }
+                _mv = null;
+            }
             if (run.cfg.jump && pbJump(mob, now, 0)) return;   // Doanh Trại: nhảy quanh quái ở mọi ải game cho nhảy (xen kẽ với đánh)
             fight(now);
             return;
@@ -1872,7 +1891,7 @@ public class VlcmTrain {
             if (!_afk.sent1 && now - _afk.at > 2500 && ai && !ai.isStart) { _afk.sent1 = true; try { snd.send_50583(1); } catch (e:Error) { } }
             var open:Boolean = next > 0 && pbPortalOpen(next);
             if (open || _pbDoneAt > 0) afkStopBegin(now, open ? "cổng đã mở" : "đã hoàn thành", false);
-            else if (now - _afk.at > AFK_MAX) afkStopBegin(now, "treo " + int(AFK_MAX / 60000) + " phút vẫn chưa mở cổng", true);
+            else if (now - _afk.at > AFK_MAX) afkStopBegin(now, "treo " + int(AFK_MAX / 60000) + " phút vẫn chưa mở cổng — tự tìm quái tiếp", false);
             return;
         }
         // đang dừng: đợi lưu lại phạm vi cũ (server trả 50582 có thể làm game tự bật lại) rồi gửi dừng, kiểm lại một lần nữa
@@ -1882,6 +1901,7 @@ public class VlcmTrain {
             var ex:Boolean = _afk.exit, why:String = _afk.why;
             _afk = null;
             _emit("train", "pb tq đã tắt treo máy, trả phạm vi cũ (" + why + ")");
+            if (_pbRun) { _pbRun.afkTried = false; _pbRun.lapEmpty = false; }   // đi thêm một vòng tuần trống nữa thì được treo lại
             if (ex) pbExit(why);
         }
     }
@@ -2180,6 +2200,7 @@ public class VlcmTrain {
         while (badPoint(run, route[run.ri % route.length]) && guard++ < route.length) patrolAdvance(run, route);
         if (guard >= route.length) { if (!run.allBadLogged) { run.allBadLogged = true; _emit("train", "warn pb mọi điểm tuần ở map " + curMap() + " đều không tới được"); } run.lapEmpty = true; return; }
         var p:Array = route[run.ri % route.length];
+        run.patrolling = true;
         if (goPoint(run, p[0], p[1], now, 3, 500) != "walking") patrolAdvance(run, route);   // tới điểm (hoặc không tới được) là đi tiếp
     }
     private function patrolAdvance(run:Object, route:Array):void {
@@ -2249,6 +2270,18 @@ public class VlcmTrain {
             closeInstancePanel();
             pbExit("");
         }
+    }
+
+    /** 90s không tiến triển: không thoát phó bản — xóa điểm hỏng / quái bị bỏ qua, dừng lệnh đi, đi tuần lại từ đầu */
+    private function pbUnstick(run:Object, now:int, where:String):void {
+        run.unstuck = int(run.unstuck) + 1;
+        _emit("train", "warn pb " + run.key + " " + where + ": " + int(PB_FLOOR_STUCK / 1000) + " giây không tiến triển — gỡ kẹt (lần " + run.unstuck
+              + "): xóa điểm hỏng + quái bị bỏ qua, đi tuần lại từ đầu");
+        run.badPts = {}; run.ri = 0; run.gp = null; run.lapFound = false; run.lapEmpty = false; run.allBadLogged = false; run.patrolling = false;
+        run.mcTried = null; run.mcDoorAt = 0; run.mcNear = false;
+        _black = {}; _blackN = {}; _target = null; _ap = null; _pp = null; _mv = null;
+        try { _c.MainCharSeachPathManager.clear(); me().stopMove(); } catch (e:Error) { }
+        run.progressAt = now; run.floorAt = now;
     }
 
     private function pbExit(why:String, ok:Boolean = false):void {
@@ -2561,7 +2594,6 @@ public class VlcmTrain {
     // Tùy chọn bỏ qua ải chuột tầng 15 + phòng thần bí: không đánh, đi thẳng tới cửa / cổng (game cho qua khi chưa giết hết).
     private static const MC_FARM_X:int = 76, MC_FARM_Y:int = 51;
     private static const MC_FARM_R:int = 6;              // đánh quái trong 6 ô quanh điểm treo
-    private static const MC_FARM_RESERVE:int = 8 * 60000; // treo theo liên trảm: còn < 8 phút của lượt thì thôi treo để kịp xong mê cung
     private static const MC_ROOMS:Array = [20033,20177,20178,20179,20180,20181,20182,20183,20184,20185,20186,20187,20188,20189,20190,20191];
     private static const MC_SECRET:int = 20192;
     private static const MC_DOORS:Object = { L: [40, 26], R: [116, 28] };
@@ -2668,7 +2700,6 @@ public class VlcmTrain {
         var done:String = null;
         if (lz) {
             if (c >= run.cfg.farmLz) done = "đạt liên trảm " + c;
-            else if (now - run.start > PB_RUN_MAX - MC_FARM_RESERVE) done = "lượt còn dưới " + int(MC_FARM_RESERVE / 60000) + " phút, chưa đạt liên trảm " + run.cfg.farmLz + " (cao nhất " + run.mcLzMax + ")";
         } else if (now - run.mcFarm >= run.cfg.farmMin * 60000) done = "hết " + run.cfg.farmMin + " phút";
         if (done) {
             run.mcFarmDone = true;

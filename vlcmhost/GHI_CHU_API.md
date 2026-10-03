@@ -1,6 +1,6 @@
 ﻿# GHI CHÚ API — VLCM (Mộng Chí Tôn, TePayLink)
 
-Cập nhật: 03-10-2026 (bản 03-10d: thứ tự phó bản, nhảy mọi ải Doanh Trại theo tầm game, Mê Cung leo tầng/treo quái, áp dụng cài đặt ngay, đi tuần không bị buff chặn; còn lại trong danh sách chờ sửa). Gửi file này (hoặc cả vlcmhost_train.zip) ở đầu mỗi cuộc trò chuyện mới.
+Cập nhật: 03-10-2026 (bản 03-10e: không bỏ quái aggro, bỏ giới hạn giờ tool tự đặt; 03-10d: thứ tự phó bản, nhảy mọi ải Doanh Trại theo tầm game, Mê Cung leo tầng/treo quái, áp dụng cài đặt ngay, đi tuần không bị buff chặn; còn lại trong danh sách chờ sửa). Gửi file này (hoặc cả vlcmhost_train.zip) ở đầu mỗi cuộc trò chuyện mới.
 Ký hiệu: **[đã xác minh]** = chạy được trên game thật hoặc đọc rõ trong mã TGame; **[mock]** = mới chạy trên game giả lập;
 **[đoán]** = suy ra, chưa kiểm tra.
 
@@ -241,6 +241,15 @@ Doanh Trại dùng chung luồng `pbInStep` với Thiên Quan.
   `moveTo` chỉ chặn gửi lại khi đang đi thật (walk / đổi ô trong 1s); buff/heal xong xóa `_mv`, `run.moveAt = 0`, lùi mốc `gp.prog` 1s;
   `goPoint` chỉ báo "không tới được" khi đã gửi lệnh đi ≥ 1,5s trước và 2,5s không lại gần.
 - Còn khả năng: Thiên Quan dùng 1 tuyến chung 13 tầng — nếu (74,57) vẫn báo hỏng mà không có buff ngay trước thì do tuyến (cần tuyến riêng tầng đó).
+
+**Bỏ qua quái đã aggro, tool tự thoát theo giờ** (Hain báo 03-10) — **[đã sửa 03-10e]**
+- Luật 20s máu không giảm: chỉ đếm lúc đang đánh thật (không `_oor`, không walk, không bị khống chế, không vừa buff/heal); chốt cứng 45s từ lúc chọn mà máu chưa giảm lần nào. Phó bản bỏ 10s (train 60s). Log `bỏ quái #id cách … ô: lý do`.
+- "Không lại gần được": quái ≤ 6 ô (`AP_NEAR`) hoặc đã di chuyển ≥ 2 ô từ lúc chọn (aggro) → không bỏ, `_forceId` ra chiêu thẳng; phó bản bỏ tối đa 10s (train vẫn 10s rồi 10 phút); log mỗi lần; `_black`/`_blackN` xóa khi sang tầng.
+- Chọn được quái lúc đang đi tuần (`run.patrolling`): `MainCharSeachPathManager.clear()` + `stopMove()` rồi đánh.
+- Bỏ mọi giới hạn giờ tool tự đặt: không còn "quá 25 phút"; "kẹt ở tầng / mê cung" 90s → `pbUnstick` (xóa điểm hỏng, quái bị bỏ, đi tuần lại), không thoát;
+  Thiên Quan treo máy 3 phút → thôi treo, tự tìm quái (đi thêm một vòng trống thì được treo lại); Mê Cung treo theo liên trảm: không còn mốc chừa giờ.
+  Giới hạn thời gian phó bản của game (Hain chưa chắc 1 tiếng, tính từ lúc vào): để game tự đẩy ra.
+- Nhặt trước đánh sau: giữ nguyên (Hain xác nhận không phải nguyên nhân).
 
 **Phu Tử**
 - E1. Quái theo thứ tự có thể kẹt vĩnh viễn (giống B1): `run.ptTarget` được gán lại sau khi bị bỏ, và lúc tìm không bỏ qua `_black`. Sửa: bỏ con đó, tìm con cùng tên khác; chỉ còn đúng con đó thì đi tuần một vòng rồi thử lại.
