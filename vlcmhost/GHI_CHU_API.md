@@ -251,6 +251,17 @@ Doanh Trại dùng chung luồng `pbInStep` với Thiên Quan.
   Giới hạn thời gian phó bản của game (Hain chưa chắc 1 tiếng, tính từ lúc vào): để game tự đẩy ra.
 - Nhặt trước đánh sau: giữ nguyên (Hain xác nhận không phải nguyên nhân).
 
+**Kéo thả thứ tự ưu tiên chức năng trên panel** (Hain báo 03-10, chờ lệnh sửa)
+- Hain muốn: kéo thả các dòng chức năng ở khung ĐIỀU KHIỂN (5 phó bản + Đánh quái) để đổi thứ tự ưu tiên; ghi nhớ thứ tự.
+- Hiện tại: thứ tự cố định Liên Trảm, Thiên Quan, Doanh Trại, Phu Tử, Mê Cung (theo chỉ số trong code, `PbArgs` gửi `list=` theo thứ tự này);
+  Đánh quái luôn chạy sau cùng, chỉ khi không còn phó bản nào cần làm (`PbWanted`).
+- Dự kiến: lưu thứ tự trong `train_<acc>.ini` (mỗi tài khoản); `PbArgs` gửi `list=` theo thứ tự đã kéo; SWF đã chạy theo thứ tự `list=` sẵn
+  (phó bản đang làm vẫn làm hết lượt rồi mới xét thứ tự, theo 03-10a).
+- Câu hỏi chờ chốt:
+  1. Đánh quái kéo lên trên một phó bản thì nghĩa là gì? Đánh quái không có điểm kết thúc → cần điều kiện dừng (khung giờ, số phút, mốc cấp…) để còn tới phó bản bên dưới.
+  2. Thứ tự riêng từng tài khoản hay chung mọi tài khoản?
+  3. Kéo thả bằng chuột, hay thêm nút ▲▼ (hoặc cả hai)?
+
 **Phu Tử**
 - E1. Quái theo thứ tự có thể kẹt vĩnh viễn (giống B1): `run.ptTarget` được gán lại sau khi bị bỏ, và lúc tìm không bỏ qua `_black`. Sửa: bỏ con đó, tìm con cùng tên khác; chỉ còn đúng con đó thì đi tuần một vòng rồi thử lại.
 - E2. Giết đúng con theo thứ tự không tính kill, không chờ đồ rơi. Sửa: tính kill + chờ đồ rơi 1 giây.
