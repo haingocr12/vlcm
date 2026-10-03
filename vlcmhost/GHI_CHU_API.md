@@ -263,6 +263,12 @@ Doanh Trại dùng chung luồng `pbInStep` với Thiên Quan.
   3. kéo thả bằng chuột, có hiệu ứng báo điểm rơi khi đang kéo (vạch kẻ ngang ở chỗ sẽ thả + dòng đang kéo mờ đi).
 - Dự kiến: lưu `order=` (vd `tq,dt,train,lt,pt,mc`) trong `train_<acc>.ini`; đổi tài khoản thì xếp lại các dòng; thả xong gửi `pb_list` nếu đang chạy phó bản.
 
+**Sửa mức % máu của skill hồi máu đã thêm** (Hain báo 03-10, chờ lệnh sửa)
+- Hain muốn: trong danh sách hỗ trợ (tab KỸ NĂNG), sửa được mức "máu dưới X%" của skill hồi máu đã thêm, không phải xóa rồi thêm lại.
+- Hiện tại: `g_supList` chỉ có thêm (+) / xóa; mức % chỉ nhập lúc thêm (`IDC_EDIT_SUPPCT`, 5–95).
+- Dự kiến: nhấp đúp vào cột "Điều kiện" của dòng hồi máu → ô nhập số ngay trên dòng, Enter/rời ô thì lưu (5–95), Esc hủy;
+  lưu xong dùng `SkillSetChanged` → áp dụng ngay (cả đang Đánh quái lẫn đang chạy phó bản, theo 03-10d). Dòng buff không có mức %, nhấp đúp không làm gì.
+
 **Phu Tử**
 - E1. Quái theo thứ tự có thể kẹt vĩnh viễn (giống B1): `run.ptTarget` được gán lại sau khi bị bỏ, và lúc tìm không bỏ qua `_black`. Sửa: bỏ con đó, tìm con cùng tên khác; chỉ còn đúng con đó thì đi tuần một vòng rồi thử lại.
 - E2. Giết đúng con theo thứ tự không tính kill, không chờ đồ rơi. Sửa: tính kill + chờ đồ rơi 1 giây.
