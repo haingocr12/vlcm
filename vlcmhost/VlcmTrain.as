@@ -1179,6 +1179,7 @@ public class VlcmTrain {
             queue.push({ key: key, runs: int(kv[key + "_runs"]), rev: Math.max(0, int(kv[key + "_rev"])),
                             minr: int(kv[key + "_minr"]), jump: kv[key + "_jump"] == "1", jmax: int(kv[key + "_jmax"]), route: route, sroute: sroute, r15: r15,
                             bow: kv[key + "_bow"] != "0", farm: int(kv[key + "_farm"]), farmMin: Math.max(1, int(kv[key + "_farmmin"] || 10)),
+                            farmBy: kv[key + "_farmby"] == "lz" ? "lz" : "min", farmLz: Math.max(1, int(kv[key + "_farmlz"] || 300)), skipMice: kv[key + "_skip"] == "1",
                             sf: int(kv[key + "_sf"]), nomob: int(kv[key + "_nomob"]), lzc: parseLzCond(kv[key + "_lz"]),
                             lty: int(kv[key + "_y"]), cont: kv[key + "_cont"] == "1", lure: kv[key + "_lure"] == "1", ltx: int(kv[key + "_x"]),
                             kpp: Math.max(1, int(kv[key + "_kpp"] || 2)), pick: int(kv[key + "_pick"]), skipboss: kv[key + "_skipboss"] == "1",
@@ -2558,6 +2559,12 @@ public class VlcmTrain {
     // 16 phòng 20033, 20177..20191, mỗi phòng 2 cửa: trái (40,26) / phải (116,28). Đi vào cửa (game tự dịch chuyển như bước lên cổng).
     // Sang đúng phòng kế: nhớ cửa đúng. Bị đưa đi chỗ khác / 4s vẫn ở phòng cũ: đổi cửa. Phòng cuối: NPC 1740 (84,64) nhận quà (52059) rồi ra.
     // Phòng thần bí 20192: đánh chuột, nhặt đồng rồi ra. Tùy chọn: dừng ở một tầng để treo đánh quái N phút.
+    // Leo tầng: không đánh, không nhặt — đi thẳng tới cửa (quái ra liên tục). Tầng treo: đứng ở (76,51), quái tự tới thì đánh,
+    // nhặt theo cài đặt nhặt của Đánh quái; ngưng treo khi hết N phút HOẶC (chọn 1 trong 2) đạt mốc liên trảm X.
+    // Tùy chọn bỏ qua ải chuột tầng 15 + phòng thần bí: không đánh, đi thẳng tới cửa / cổng (game cho qua khi chưa giết hết).
+    private static const MC_FARM_X:int = 76, MC_FARM_Y:int = 51;
+    private static const MC_FARM_R:int = 6;              // đánh quái trong 6 ô quanh điểm treo
+    private static const MC_FARM_RESERVE:int = 8 * 60000; // treo theo liên trảm: còn < 8 phút của lượt thì thôi treo để kịp xong mê cung
     private static const MC_ROOMS:Array = [20033,20177,20178,20179,20180,20181,20182,20183,20184,20185,20186,20187,20188,20189,20190,20191];
     private static const MC_SECRET:int = 20192;
     private static const MC_DOORS:Object = { L: [40, 26], R: [116, 28] };
@@ -2588,30 +2595,20 @@ public class VlcmTrain {
             else _emit("train", "pb floor mc " + (room + 1) + "/" + MC_ROOMS.length + " map " + here);
         }
         if (room >= 0) run.floor = room;
-        if (here == MC_SECRET) { if (!pbMouseStep(run, now, run.cfg.sroute && run.cfg.sroute.length ? run.cfg.sroute : MC_SECRET_ROUTE)) mcSecret(run, now); return; }
-        if (room == 14 && !run.mouseDone && pbMouseStep(run, now, run.cfg.r15 && run.cfg.r15.length ? run.cfg.r15 : MC_R15_ROUTE)) return;   // tầng 15: ải chuột
-        if (room < 0) return;
-        // quái sát bên thì đánh (tự vệ); túi đồ gần thì nhặt
-        if (pbPickStep(now, PB_R)) { run.progressAt = now; return; }
-        var near:Object = _target != null && valid(_target) ? _target : null;
-        if (!near) { _r = run.mcFarm ? (run.cfg.range > 0 ? run.cfg.range : 99) : 5; near = pick(now); _r = run.mcFarm ? _r : PB_R; }
-        // treo đánh quái ở tầng chỉ định
-        if (run.cfg.farm > 0 && room + 1 == run.cfg.farm && !run.mcFarmDone) {
-            if (!run.mcFarm) { run.mcFarm = now; _emit("train", "pb mc dừng ở tầng " + run.cfg.farm + " treo đánh quái " + run.cfg.farmMin + " phút"); }
-            run.progressAt = now;
-            if (now - run.mcFarm >= run.cfg.farmMin * 60000) { run.mcFarmDone = true; _emit("train", "pb mc hết giờ treo, đi tiếp"); }
-            else {
-                if (support(now)) return;
-                if (near) { fight(now); return; }
-                var fr:Array = run.cfg.route;
-                if (fr && fr.length) {
-                    var fp:Array = fr[run.ri % fr.length];
-                    if (badPoint(run, fp) || goPoint(run, fp[0], fp[1], now, 2, 500) != "walking") run.ri++;
-                }
-                return;
-            }
+        if (here == MC_SECRET) {
+            if (run.cfg.skipMice) { mcSecretExit(run, now); return; }           // bỏ qua phòng thần bí: ra cổng luôn
+            if (!pbMouseStep(run, now, run.cfg.sroute && run.cfg.sroute.length ? run.cfg.sroute : MC_SECRET_ROUTE)) mcSecret(run, now);
+            return;
         }
-        if (near) { run.progressAt = now; fight(now); return; }
+        if (room == 14 && !run.cfg.skipMice && !run.mouseDone && pbMouseStep(run, now, run.cfg.r15 && run.cfg.r15.length ? run.cfg.r15 : MC_R15_ROUTE)) return;   // tầng 15: ải chuột
+        if (room < 0) return;
+        // treo đánh quái ở tầng chỉ định
+        if (run.cfg.farm > 0 && room + 1 == run.cfg.farm && !run.mcFarmDone && mcFarmStep(run, now)) return;
+        // leo tầng: không đánh, không nhặt — bỏ mục tiêu / túi đang theo, đi thẳng tới cửa
+        if (_target != null || _pickBag != null || _pp != null) {
+            _target = null; _pickBag = null; _pp = null; _ap = null;
+            try { gi().lockOnChar = null; } catch (e0:Error) { }
+        }
         // phòng cuối: nhận quà NPC rồi ra
         if (room == MC_ROOMS.length - 1) {
             if (tileDist(me(), 84, 64) > 3) {
@@ -2659,6 +2656,53 @@ public class VlcmTrain {
         if (me().getStatus() != "walk" && now - run.moveAt > 1000) { walkTo(here, tx, ty); run.moveAt = now; }
     }
 
+    /** tầng treo; true = còn treo (nhịp này đã xử lý), false = ngưng treo, đi tiếp */
+    private function mcFarmStep(run:Object, now:int):Boolean {
+        var lz:Boolean = run.cfg.farmBy == "lz";
+        if (!run.mcFarm) {
+            run.mcFarm = now; run.mcLzMax = 0;
+            _target = null; _pickBag = null;
+            _emit("train", "pb mc dừng ở tầng " + run.cfg.farm + " treo quái tại " + MC_FARM_X + "," + MC_FARM_Y + ", ngưng khi "
+                  + (lz ? "đạt liên trảm " + run.cfg.farmLz : "hết " + run.cfg.farmMin + " phút"));
+        }
+        run.progressAt = now;
+        var c:int = lzCount();
+        if (c > run.mcLzMax) run.mcLzMax = c;
+        var done:String = null;
+        if (lz) {
+            if (c >= run.cfg.farmLz) done = "đạt liên trảm " + c;
+            else if (now - run.start > PB_RUN_MAX - MC_FARM_RESERVE) done = "lượt còn dưới " + int(MC_FARM_RESERVE / 60000) + " phút, chưa đạt liên trảm " + run.cfg.farmLz + " (cao nhất " + run.mcLzMax + ")";
+        } else if (now - run.mcFarm >= run.cfg.farmMin * 60000) done = "hết " + run.cfg.farmMin + " phút";
+        if (done) {
+            run.mcFarmDone = true;
+            _target = null; _pickBag = null; _ap = null;
+            try { gi().lockOnChar = null; } catch (e:Error) { }
+            _emit("train", "pb mc ngưng treo: " + done + " — đi tiếp");
+            return false;
+        }
+        _map = curMap(); _x = MC_FARM_X; _y = MC_FARM_Y; _r = MC_FARM_R;        // vùng treo: quanh điểm treo
+        if (support(now)) return true;
+        if (pickStep(now)) return true;                                       // nhặt theo cài đặt nhặt của Đánh quái
+        if (_target != null || _dw != null || pick(now) != null) { fight(now); return true; }   // quái tự tới: đánh (fight tự tính kill, chờ đồ rơi)
+        if (tileDist(me(), MC_FARM_X, MC_FARM_Y) > 2 && me().getStatus() != "walk" && now - run.moveAt > 1000) {
+            walkTo(curMap(), MC_FARM_X, MC_FARM_Y, "điểm treo mê cung"); run.moveAt = now;
+        }
+        return true;
+    }
+
+    /** ra khỏi phòng thần bí bằng cổng trong phòng (không cổng thì đi về phòng vừa rời) */
+    private function mcSecretExit(run:Object, now:int):void {
+        run.progressAt = now;
+        if (_target != null || _pickBag != null) { _target = null; _pickBag = null; try { gi().lockOnChar = null; } catch (e0:Error) { } }
+        var portal:Object = null;
+        try { for each (var c:Object in gi().scene.getCharsByType(7)) { portal = c; break; } } catch (e:Error) { }
+        if (me().getStatus() != "walk" && now - run.moveAt > 1000) {
+            if (portal) walkTo(curMap(), portal.tile_x, portal.tile_y, "ra phòng thần bí");
+            else if (run.mcFrom >= 0) walkCmd(MC_ROOMS[run.mcFrom] + ",-1,-1,0", null, "ra phòng thần bí", -1, -1);
+            run.moveAt = now;
+        }
+    }
+
     private function mcSecret(run:Object, now:int):void {
         _r = 40;
         run.progressAt = now;
@@ -2680,14 +2724,7 @@ public class VlcmTrain {
         }
         if (run.quietAt < 0) run.quietAt = now;
         if (now - run.quietAt < PB_QUIET) return;
-        // hết chuột: ra bằng cổng trong phòng
-        var portal:Object = null;
-        try { for each (var c:Object in gi().scene.getCharsByType(7)) { portal = c; break; } } catch (e:Error) { }
-        if (me().getStatus() != "walk" && now - run.moveAt > 1000) {
-            if (portal) walkTo(curMap(), portal.tile_x, portal.tile_y);
-            else if (run.mcFrom >= 0) walkCmd(MC_ROOMS[run.mcFrom] + ",-1,-1,0", null, "ra phòng thần bí", -1, -1);
-            run.moveAt = now;
-        }
+        mcSecretExit(run, now);                                               // hết chuột: ra bằng cổng trong phòng
     }
 
     // ------------------------------------------------------------------ gọi vào game

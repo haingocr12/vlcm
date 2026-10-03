@@ -1,6 +1,6 @@
 ﻿# GHI CHÚ API — VLCM (Mộng Chí Tôn, TePayLink)
 
-Cập nhật: 03-10-2026 (bản 03-10a: thứ tự phó bản + nhảy mọi ải Doanh Trại; còn lại trong danh sách chờ sửa). Gửi file này (hoặc cả vlcmhost_train.zip) ở đầu mỗi cuộc trò chuyện mới.
+Cập nhật: 03-10-2026 (bản 03-10c: thứ tự phó bản, nhảy mọi ải + chọn tầm nhảy Doanh Trại, Mê Cung leo tầng/treo quái; còn lại trong danh sách chờ sửa). Gửi file này (hoặc cả vlcmhost_train.zip) ở đầu mỗi cuộc trò chuyện mới.
 Ký hiệu: **[đã xác minh]** = chạy được trên game thật hoặc đọc rõ trong mã TGame; **[mock]** = mới chạy trên game giả lập;
 **[đoán]** = suy ra, chưa kiểm tra.
 
@@ -194,7 +194,10 @@ Doanh Trại dùng chung luồng `pbInStep` với Thiên Quan.
 - D2. Phòng thần bí: đi các điểm và ra cổng không kiểm kẹt. Sửa: dùng `goPoint`/`badPoint` và ra cổng như D1.
 - D3. Treo đánh ở tầng chỉ định: không chờ đồ rơi sau khi giết. Sửa: thêm `dropWaiting`.
 
-**Mê Cung — leo tầng / treo quái** (Hain báo 03-10, chờ lệnh sửa)
+**Mê Cung — leo tầng / treo quái** (Hain báo 03-10) — **[đã sửa 03-10c]**
+- Đã làm: leo tầng không đánh / không nhặt (bỏ mục tiêu, đi thẳng tới cửa); tầng treo `mcFarmStep`: vùng (76,51) bán kính 6, `fight` + `pickStep` (cài đặt nhặt Đánh quái), hết quái thì về (76,51);
+  ngưng treo `mc_farmby=min` (`mc_farmmin`) hoặc `lz` (`mc_farmlz`, lzCount() >= X; an toàn: lượt còn < 8 phút thì thôi treo); `mc_skip=1` bỏ qua ải chuột tầng 15 + phòng thần bí (`mcSecretExit`).
+  Panel: "Ngưng treo khi" (Hết số phút / Đạt mốc liên trảm), "Số phút", "Mốc liên trảm", ô "Bỏ qua ải chuột và phòng thần bí". Tuyến MeCung.xml không còn dùng cho tầng treo.
 - Hain muốn:
   - leo tầng **không đánh quái**;
   - tới đúng tầng chỉ định mới **ra giữa map** treo quái;
@@ -245,7 +248,7 @@ Mô tả gốc:
 2. Nhịp nhảy Doanh Trại: nhảy lúc rảnh, hay giãn 2–3 giây?
 3. Mê Cung: gửi 10051 tại cửa rồi mới kết luận cửa sai?
 4. Làm B1–B3, C1, D1–D3, E1–E2 và thứ tự phó bản trong cùng một bản?
-5. Mê Cung: đã chốt phần lớn (xem mục Mê Cung ở trên); còn hỏi nhặt túi / ải chuột / nhặt ở tầng treo.
+5. Mê Cung: đã chốt và đã sửa (03-10c).
 
 ## 12. Phó bản [đọc mã game; mock]
 
