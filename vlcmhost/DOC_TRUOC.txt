@@ -1,0 +1,20 @@
+Giai nen de len thu muc ...\Auto vlcm\ (cung cap voi thu muc vlcmhost hien co), chon Replace.
+Nen sao luu thu muc vlcmhost truoc khi ghi de.
+
+vlcmhost\                      ma nguon (VS project tham chieu ..\..\*.cpp)
+  VlcmLoader.as, VlcmTrain.as  loader SWF + train (build lai: build_swf.bat)
+  VlcmLoader.swf               ban da build san
+  vlcmhost.cpp, FlashBridge.*, PipeServer.*   host C++ (co kenh dieu khien)
+  vlcmpanel.cpp, vlcmctl.cpp   bang dieu khien / tool dong lenh (build_vlcmpanel.bat, build_vlcmctl.bat)
+vlcmhost\vlcmhost - work\vlcmhost\vlcmhost.vcxproj   da them PipeServer.cpp
+vlcmhost\vlcmhost - work\Release\   VlcmLoader.swf, vlcmpanel.exe, vlcmctl.exe dat canh vlcmhost.exe
+
+Sau khi giai nen: mo project trong Visual Studio, Ctrl+Shift+B, roi chay vlcmhost.exe va vlcmpanel.exe.
+
+Ban 30/09:
+- vlcmhost CHI build Win32 (Flash.ocx la 32-bit). Da bo cau hinh x64 va FlashCallSink.h khoi vlcmhost.vcxproj.
+  Neu VS con nho x64: chon "Release | x86/Win32" tren thanh cong cu. Co the xoa FlashCallSink.h/.cpp cu neu con.
+- vlcmpanel va vlcmctl KHONG noi cung luc vao mot vlcmhost duoc (pipe chi nhan 1 tool). Dung mot trong hai.
+  Tool noi sau se bao "dang ban" (vlcmctl) / ghi log "dang bi tool khac ket noi" (panel, tu noi lai khi tool kia tat).
+- Train: _drops (ten tui do) duoc don 3s sau khi doi map va moi 60s (xoa tui khong con tren scene).
+- Panel: lenh cho reply qua 8s hoac reply sai dang (status/lenh khac) => xoa hang cho, khong lech tag vinh vien.
