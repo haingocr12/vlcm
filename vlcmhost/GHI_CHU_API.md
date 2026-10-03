@@ -220,6 +220,17 @@ Doanh Trại dùng chung luồng `pbInStep` với Thiên Quan.
     - Hain xác nhận: tầng 15 ải chuột và phòng thần bí **không cần giết hết vẫn qua được** → bỏ qua là đi thẳng, không cần phương án dự phòng;
   - tầng treo: nhặt đồ rơi theo **cài đặt nhặt của Đánh quái** (pick off/list/all + danh sách), trong phạm vi quanh (76,51).
 
+**Áp dụng cài đặt ngay khi sửa trên panel** (Hain báo 03-10, chờ lệnh sửa)
+- Hain muốn: **mọi** thay đổi trên panel được cập nhật cho tool ngay, kể cả lúc đang treo / đang chạy phó bản.
+- Hiện tại (đọc code panel):
+  - Tiện ích (thuốc, sửa đồ, bán/hủy, cài đặt game…): đã gửi `util_set` ngay khi sửa → có hiệu lực ngay.
+  - Đánh quái (điểm train, loại quái, nhặt…) và bộ kỹ năng: panel chạy lại `train_start` sau 1,5s → có hiệu lực ngay, **nhưng chỉ khi không chạy phó bản**.
+  - Phó bản (mọi ô trong khung "..." của từng phó bản) + kỹ năng/nhặt dùng trong phó bản: **chỉ lưu file**, tool chỉ nhận khi có `pb_start`/`pb_list`; lượt đang chạy giữ cài đặt cũ tới hết lượt.
+- Dự kiến khi sửa:
+  - panel: sửa bất kỳ cài đặt phó bản / kỹ năng / nhặt lúc đang chạy phó bản → gom 1 giây rồi gửi `pb_list` (không dừng phó bản);
+  - SWF `pb_list`: cập nhật cả cài đặt của lượt đang chạy (`_pbRun.cfg`) và áp lại bộ kỹ năng/hỗ trợ/nhặt ngay; log 1 dòng "đã cập nhật cài đặt: …" liệt kê mục đổi;
+  - các mục đổi giữa chừng phải an toàn: tuyến/điểm tuần giữ chỉ số hiện tại; mốc liên trảm / số phút treo xét lại ở nhịp kế (hạ dưới mức hiện tại thì ngưng ngay); số phút tính từ lúc bắt đầu treo.
+
 **Phu Tử**
 - E1. Quái theo thứ tự có thể kẹt vĩnh viễn (giống B1): `run.ptTarget` được gán lại sau khi bị bỏ, và lúc tìm không bỏ qua `_black`. Sửa: bỏ con đó, tìm con cùng tên khác; chỉ còn đúng con đó thì đi tuần một vòng rồi thử lại.
 - E2. Giết đúng con theo thứ tự không tính kill, không chờ đồ rơi. Sửa: tính kill + chờ đồ rơi 1 giây.
