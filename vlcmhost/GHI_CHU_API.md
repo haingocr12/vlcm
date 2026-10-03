@@ -214,7 +214,7 @@ Doanh Trại dùng chung luồng `pbInStep` với Thiên Quan.
 - **Chốt thêm (03-10):**
   - leo tầng **không nhặt gì**;
   - ải chuột tầng 15 / phòng thần bí: giữ như cũ, **thêm ô tick "bỏ qua ải chuột và phòng thần bí"** → không đánh, đi thẳng tới cổng/cửa;
-    - cần kiểm trên game thật: cổng tầng 15 có mở khi chưa giết chuột không; nếu không, tool sẽ log rồi quay lại đánh chuột như cũ (tránh đánh dấu nhầm cửa sai);
+    - Hain xác nhận: tầng 15 ải chuột và phòng thần bí **không cần giết hết vẫn qua được** → bỏ qua là đi thẳng, không cần phương án dự phòng;
   - tầng treo: nhặt đồ rơi theo **cài đặt nhặt của Đánh quái** (pick off/list/all + danh sách), trong phạm vi quanh (76,51).
 
 **Phu Tử**
