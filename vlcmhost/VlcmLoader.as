@@ -83,7 +83,8 @@ public class VlcmLoader extends Sprite {
         Fight_MsgSenderProxy:      "com.tgame.moudels.fight.model::Fight_MsgSenderProxy",
         BowArrow_MsgSenderProxy:   "com.tgame.moudels.bowArrow.model::BowArrow_MsgSenderProxy",
         Mount_MsgSenderProxy:      "com.tgame.moudels.mount.model::Mount_MsgSenderProxy",
-        MainChar_MsgSenderProxy:   "com.tgame.moudels.mainchar.model::MainChar_MsgSenderProxy"
+        MainChar_MsgSenderProxy:   "com.tgame.moudels.mainchar.model::MainChar_MsgSenderProxy",
+        OtherConst:                "com.tgame.common::OtherConst"     // [đoán] tên gói; sai thì loader tìm theo tên ngắn (JUMP_MAX_DIS)
     };
     private static const REQUIRED:Array = ["NetWorkManager", "GameConfig", "GameState",
         "ProcessManager", "FacadeManager", "PipeConstants", "LoginRoleVO"];
@@ -94,7 +95,7 @@ public class VlcmLoader extends Sprite {
         "MoveCallBack", "FPanel", "FCloseEvent", "BasePanel", "POPWindowManager",
         "Team_MsgSenderProxy", "BaseEvent", "FightManager",
         "Fight_MsgSenderProxy", "BowArrow_MsgSenderProxy", "Mount_MsgSenderProxy", "MainChar_MsgSenderProxy",
-        "Engine_MsgSenderProxy", "Afk_MsgSenderProxy"];
+        "Engine_MsgSenderProxy", "Afk_MsgSenderProxy", "OtherConst"];
     private static const TRAIN_NEEDS:Array = ["GameInstance", "PipeManager", "MainCharSeachPathManager", "NetWorkManager"];
 
     private static const OP_LINES:int = 40300;

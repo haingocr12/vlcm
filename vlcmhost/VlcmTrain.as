@@ -1137,6 +1137,10 @@ public class VlcmTrain {
     private var _pbDoneAt:int = -1;           // 10726
     private var _pbJumpDir:int = 0, _pbJumpAt:int = 0;
     private var _noJumpLog:Object = {};       // map đã báo "game không cho nhảy"
+    private static const JUMP_TEST_MAX:int = 500;  // tầm nhảy của bản cũ (chế độ thử)
+    private var _jChk:Object = null;          // lần nhảy đang chờ xem kết quả
+    private var _jSt:Object = null;           // thống kê nhảy từ lần báo trước
+    private var _jRepAt:int = 0;
     private var _pbWait:Object = {};
     private var _pbCur:String = null;         // phó bản đang làm (giữ cả lúc về thành giữa 2 lượt): làm hết lượt rồi mới sang phó bản khác
     private var _pbRoseTry:int = 0, _pbRoseWait:int = 0;          // key -> đã báo chờ (điều kiện liên trảm chưa đạt) trong danh sách này
@@ -1173,7 +1177,7 @@ public class VlcmTrain {
                 if (c4 > 0) sroute.push([int(sp.substr(0, c4)), int(sp.substr(c4 + 1))]);
             }
             queue.push({ key: key, runs: int(kv[key + "_runs"]), rev: Math.max(0, int(kv[key + "_rev"])),
-                            minr: int(kv[key + "_minr"]), jump: kv[key + "_jump"] == "1", route: route, sroute: sroute, r15: r15,
+                            minr: int(kv[key + "_minr"]), jump: kv[key + "_jump"] == "1", jmax: int(kv[key + "_jmax"]), route: route, sroute: sroute, r15: r15,
                             bow: kv[key + "_bow"] != "0", farm: int(kv[key + "_farm"]), farmMin: Math.max(1, int(kv[key + "_farmmin"] || 10)),
                             sf: int(kv[key + "_sf"]), nomob: int(kv[key + "_nomob"]), lzc: parseLzCond(kv[key + "_lz"]),
                             lty: int(kv[key + "_y"]), cont: kv[key + "_cont"] == "1", lure: kv[key + "_lure"] == "1", ltx: int(kv[key + "_x"]),
@@ -1495,6 +1499,7 @@ public class VlcmTrain {
         }
         if (_pbDoneAt > 0) { _pbPhase = "reward"; _pbAt = now; _target = null; return; }
         if (run.unpick) { pbExit("bỏ tick phó bản đang chạy"); return; }
+        jumpWatch(now);
         if (now - run.start > PB_RUN_MAX) { pbExit("quá " + int(PB_RUN_MAX / 60000) + " phút"); return; }
         _fast = false; _pbNoBoss = false;
         if (anyMob()) run.mobSeenAt = now;
@@ -1559,7 +1564,7 @@ public class VlcmTrain {
         }
         if (mob) {
             run.noTgtAt = -1; run.noTarget = 0; run.lapFound = true; run.progressAt = now; run.goingGate = false;
-            if (run.cfg.jump && pbJump(mob, now)) return;              // Doanh Trại: nhảy quanh quái ở mọi ải game cho nhảy (xen kẽ với đánh)
+            if (run.cfg.jump && pbJump(mob, now, run.cfg.jmax)) return;   // Doanh Trại: nhảy quanh quái ở mọi ải game cho nhảy (xen kẽ với đánh)
             fight(now);
             return;
         }
@@ -2303,11 +2308,51 @@ public class VlcmTrain {
         } catch (e:Error) { }
     }
 
+    /** tầm nhảy của game: OtherConst.JUMP_MAX_DIS (> 0), không đọc được thì 8 ô như bot gốc */
+    private function gameJumpMax():int {
+        try { if (_c.OtherConst && int(_c.OtherConst.JUMP_MAX_DIS) > 0) return int(_c.OtherConst.JUMP_MAX_DIS); } catch (e:Error) { }
+        return 8;
+    }
+    // ---- thống kê nhảy (để so sánh tầm "theo game" và 500): sau mỗi lần nhảy 1,2s xem nhân vật đáp ở đâu và thể lực đổi bao nhiêu
+    private function jumpNote(now:int, jmax:int, game:Boolean, x0:int, y0:int, nx:int, ny:int, jd:Number, pp0:int):void {
+        jumpCheck(now, true);
+        if (_jSt == null) { _jSt = { n: 0, ok: 0, off: 0, none: 0, far: 0, maxd: 0, ppSum: 0, ppN: 0, mode: "" }; if (_jRepAt == 0) _jRepAt = now; }
+        _jSt.n++; _jSt.mode = game ? "theo game " + jmax + " ô" : "thử " + jmax;
+        if (jd > _jSt.maxd) _jSt.maxd = jd;
+        if (jd > 8) _jSt.far++;
+        _jChk = { at: now, x0: x0, y0: y0, x: nx, y: ny, pp: pp0 };
+    }
+    private function jumpCheck(now:int, force:Boolean):void {
+        if (_jChk == null || (!force && now - _jChk.at < 1200)) return;
+        var m:Object = me();
+        if (m && _jSt) {
+            if (m.tile_x == _jChk.x0 && m.tile_y == _jChk.y0) _jSt.none++;               // không rời chỗ: client/server không cho nhảy
+            else if (tileDist(m, _jChk.x, _jChk.y) <= 1.5) _jSt.ok++;                   // đáp đúng điểm
+            else _jSt.off++;                                                           // đáp lệch / bị kéo về
+            var pp1:int = -1;
+            try { pp1 = int(gi().mainCharData.attributeInfo.ppNow); } catch (e:Error) { }
+            if (_jChk.pp >= 0 && pp1 >= 0) { _jSt.ppSum += _jChk.pp - pp1; _jSt.ppN++; }
+        }
+        _jChk = null;
+    }
+    private function jumpWatch(now:int):void {
+        jumpCheck(now, false);
+        if (_jSt == null || now - _jRepAt < 30000) return;
+        var pp:String = _jSt.ppN > 0 ? (_jSt.ppSum / _jSt.ppN).toFixed(1) : "?";
+        _emit("train", "info nhảy [" + _jSt.mode + "] " + _jSt.n + " lần/" + int((now - _jRepAt) / 1000) + "s: đáp đúng " + _jSt.ok + ", lệch/bị kéo " + _jSt.off
+              + ", không nhảy " + _jSt.none + "; xa nhất " + _jSt.maxd.toFixed(1) + " ô, " + _jSt.far + " lần > 8 ô; thể lực giảm trung bình " + pp + "/lần (1,2s sau, đã gồm hồi)");
+        _jSt = null; _jRepAt = now;
+    }
+
     /**
      * Nhảy quanh quái (Doanh Trại: mọi ải; Phu Tử: boss trạng thái đặc biệt) — như Shift+click của người chơi: MainCharSeachPathManager.charJump.
      * Điều kiện của game: map cho nhảy, thể lực >= 20, không bị trói; thêm: quái trong 7 ô, cách lần trước >= 0.5s.
      */
-    private function pbJump(mob:Object, now:int):Boolean {
+    /**
+     * maxd: tham số tầm nhảy truyền cho charJump. <= 0 = theo game (OtherConst.JUMP_MAX_DIS, không đọc được thì 8 ô) và
+     * bỏ điểm đáp ngoài tầm như bot gốc; JUMP_TEST_MAX (500) = như bản cũ, không lọc (chế độ thử để so sánh).
+     */
+    private function pbJump(mob:Object, now:int, maxd:int):Boolean {
         var here:int = curMap();
         if (now - _pbJumpAt < PB_JUMP_GAP) return false;
         var m:Object = me();
@@ -2324,15 +2369,22 @@ public class VlcmTrain {
             if (_c.FightManager && !_c.FightManager.isMainCharCanMove()) return false;
         } catch (e:Error) { return false; }
         if (tileDist(m, mob.tile_x, mob.tile_y) > 7) return false;
+        var game:Boolean = maxd <= 0;
+        var jmax:int = game ? gameJumpMax() : maxd;
         for (var t:int = 0; t < 12; t++) {
             _pbJumpDir = (_pbJumpDir + 1 + int(Math.random() * 3)) % 12;
             var nx:int = mob.tile_x + PB_JUMP_OFS[_pbJumpDir][0], ny:int = mob.tile_y + PB_JUMP_OFS[_pbJumpDir][1];
             if (nx == m.tile_x && ny == m.tile_y) continue;
+            var jd:Number = tileDist(m, nx, ny);
+            if (game && jd > jmax) continue;                            // ngoài tầm nhảy của game: thử hướng khác
+            var pp0:int = -1;
+            try { pp0 = int(gi().mainCharData.attributeInfo.ppNow); } catch (e1:Error) { }
             try {
                 _c.MainCharSeachPathManager.clear();
-                _c.MainCharSeachPathManager.charJump(m, new Point(nx, ny), -1, 500, null, false, false);
+                _c.MainCharSeachPathManager.charJump(m, new Point(nx, ny), -1, jmax, null, false, false);
             } catch (e2:Error) { return false; }
             _pbJumpAt = now;
+            jumpNote(now, jmax, game, m.tile_x, m.tile_y, nx, ny, jd, pp0);
             return true;
         }
         return false;
@@ -2434,7 +2486,7 @@ public class VlcmTrain {
             run.progressAt = now;
             if (support(now)) return;
             if (_target != boss) { _target = boss; _targetSince = now; gi().lockOnChar = boss; }
-            if (run.cfg.jump && ptBossSpecial(boss) && pbJump(boss, now)) return;
+            if (run.cfg.jump && ptBossSpecial(boss) && pbJump(boss, now, JUMP_TEST_MAX)) return;
             fight(now);
             return;
         }

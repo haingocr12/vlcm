@@ -165,6 +165,9 @@ Doanh Trại dùng chung luồng `pbInStep` với Thiên Quan.
 - B2. Nhảy (`pbJump`):
   - **[đã sửa 03-10a]** nhảy ở mọi ải Doanh Trại (bỏ `PB_JUMP_MAPS`); giữ điều kiện game: thể lực ≥ 20, không bị trói/định thân, `MapRes.allowJump`.
     Ải game không cho nhảy: bỏ qua, log 1 lần `info pb map <id> game không cho nhảy`. Ải chuột vẫn không nhảy (luồng chuột riêng).
+  - **[03-10b]** Tầm nhảy chọn được (`dt_jmax`): `0` = theo game `OtherConst.JUMP_MAX_DIS` (không đọc được thì 8), bỏ điểm đáp ngoài tầm như bot gốc — **mặc định**;
+    `500` = như bản cũ, không lọc (thử nghiệm). Phu Tử (boss Khôi Khôi) giữ 500 như cũ. OtherConst: tên gói **[đoán]** `com.tgame.common::OtherConst`, sai thì loader tìm theo tên ngắn.
+    Log mỗi 30s: `info nhảy [chế độ] N lần: đáp đúng / lệch-bị kéo / không nhảy; xa nhất; số lần > 8 ô; thể lực giảm trung bình (1,2s sau, đã gồm hồi)` — để so sánh 2 chế độ.
   - còn treo: nhảy mỗi 0,5 giây gọi `MainCharSeachPathManager.clear()`, chen vào lúc đánh/tiến lại gần;
     đề xuất: chỉ nhảy lúc rảnh, hoặc giãn ra 2–3 giây (chờ chốt), và ghi vào log "spam đi". Liên quan B3 (nhảy mọi ải → B3 dễ gặp hơn).
 - B3. **Bỏ quái gần, chạy đánh quái xa** (Hain báo 03-10). Nghi theo thứ tự:
