@@ -1,6 +1,6 @@
 ﻿# GHI CHÚ API — VLCM (Mộng Chí Tôn, TePayLink)
 
-Cập nhật: 03-10-2026 (bản 02-10j + danh sách chờ sửa). Gửi file này (hoặc cả vlcmhost_train.zip) ở đầu mỗi cuộc trò chuyện mới.
+Cập nhật: 03-10-2026 (bản 03-10a: thứ tự phó bản + nhảy mọi ải Doanh Trại; còn lại trong danh sách chờ sửa). Gửi file này (hoặc cả vlcmhost_train.zip) ở đầu mỗi cuộc trò chuyện mới.
 Ký hiệu: **[đã xác minh]** = chạy được trên game thật hoặc đọc rõ trong mã TGame; **[mock]** = mới chạy trên game giả lập;
 **[đoán]** = suy ra, chưa kiểm tra.
 
@@ -163,10 +163,10 @@ Doanh Trại dùng chung luồng `pbInStep` với Thiên Quan.
   
   Sửa: bỏ con đó và bỏ qua `_black` khi chọn.
 - B2. Nhảy (`pbJump`):
-  - Hain muốn **nhảy ở mọi ải Doanh Trại** (hiện chỉ 20062/20067);
-  - vẫn giữ điều kiện game: thể lực ≥ 20, không bị trói, `MapRes.allowJump`;
-  - nhảy mỗi 0,5 giây gọi `MainCharSeachPathManager.clear()`, chen vào lúc đánh/tiến lại gần;
-  - đề xuất: chỉ nhảy lúc rảnh, hoặc giãn ra 2–3 giây (chờ chốt), và ghi vào log "spam đi".
+  - **[đã sửa 03-10a]** nhảy ở mọi ải Doanh Trại (bỏ `PB_JUMP_MAPS`); giữ điều kiện game: thể lực ≥ 20, không bị trói/định thân, `MapRes.allowJump`.
+    Ải game không cho nhảy: bỏ qua, log 1 lần `info pb map <id> game không cho nhảy`. Ải chuột vẫn không nhảy (luồng chuột riêng).
+  - còn treo: nhảy mỗi 0,5 giây gọi `MainCharSeachPathManager.clear()`, chen vào lúc đánh/tiến lại gần;
+    đề xuất: chỉ nhảy lúc rảnh, hoặc giãn ra 2–3 giây (chờ chốt), và ghi vào log "spam đi". Liên quan B3 (nhảy mọi ải → B3 dễ gặp hơn).
 - B3. **Bỏ quái gần, chạy đánh quái xa** (Hain báo 03-10). Nghi theo thứ tự:
   1. nhảy làm `approach` tưởng 1,5 giây không lại gần → cấm con gần 10 giây / 10 phút;
   2. luật giữ mục tiêu: lỡ chọn con xa thì giữ tới khi chết;
@@ -196,7 +196,13 @@ Doanh Trại dùng chung luồng `pbInStep` với Thiên Quan.
 - E2. Giết đúng con theo thứ tự không tính kill, không chờ đồ rơi. Sửa: tính kill + chờ đồ rơi 1 giây.
 - (Đính chính: bản 02-10j ghi nhầm "Phong Thần", đúng là Phu Tử — sửa trong ghi chú cập nhật bản tới.)
 
-**Thứ tự chạy phó bản** (Hain báo 03-10)
+**Thứ tự chạy phó bản** (Hain báo 03-10) — **[đã sửa 03-10a]**
+- SWF nhớ phó bản đang làm (`_pbCur`, giữ cả lúc về thành giữa 2 lượt); `pbNextKey` ưu tiên nó tới khi hết lượt (NPC báo) / bị bỏ qua / bỏ tick.
+- Lệnh mới `pb_list` (cùng tham số pb_start + `on=` mọi phó bản đang tick): panel tick/bỏ tick lúc đang chạy chỉ gửi pb_list, không pb_stop/pb_start.
+  Phó bản đang làm còn tick mà panel tạm bỏ khỏi `list` (giờ/điều kiện) vẫn được giữ. Bỏ tick đúng phó bản đang làm → thoát (lượt thất bại; đang chết thì sau khi hồi sinh), sự kiện `pb unpick <k>`.
+  Bỏ tick hết: panel không pb_stop ngang, SWF tự thoát rồi `pb finish`. SWF cũ trả "không hỗ trợ" → panel làm như trước (pb_stop rồi chạy lại).
+
+Mô tả gốc:
 - Ví dụ: đang chạy Doanh Trại, tick thêm Thiên Quan (nằm trên trong danh sách) → bot ra Doanh Trại đi Thiên Quan.
 - Hain muốn: làm xong Doanh Trại rồi mới tới Thiên Quan.
 - Nguyên nhân trong code:
@@ -233,7 +239,7 @@ Doanh Trại dùng chung luồng `pbInStep` với Thiên Quan.
 - Hồi sinh: bảng `ReLivePanel` trong `POPWindowManager` (modal, tự về thành sau 15s). Nút tại chỗ = BaseEvent "UI_RELIVEPANEL_LOCALE_RELIVE_BTN_CLICK" → 20075 byte 0 (tốn hoa); về thành = "…RETURN…" → byte 1. Hoa hồng: id **1201–1206** (cộng cả 6).
 - Nhảy: `MainCharSeachPathManager.charJump(mainChar, Point(x,y), -1, 500, null, false, false)`; điều kiện như Shift+click: `getMapRes(map).allowJump`, `attributeInfo.ppNow >= 20`, không `isSoft`, `FightManager.isMainCharCanMove()`. Game có sẵn ô "Tự nhảy Doanh Trại" (`GameState.autoJumpDoanhTrai`) trong bảng Trợ Chiến.
 - Bảng Trợ Chiến của game có tab Phó bản (Liên Trảm/Thiên Quan/Doanh Trại) đang ghi "Sắp mở" — người dùng không muốn dùng.
-- Lệnh pipe: `pb_start list=lt,tq,dt <k>_runs= <k>_rev= tq_minr= dt_jump= <k>_route=x:y;… done=lt:n,…`, `pb_stop`. Status thêm `pb pbphase pbfloor pbdeaths roses`.
+- Lệnh pipe: `pb_list` (như pb_start, thêm `on=`; đang chạy thì chỉ cập nhật danh sách) | `pb_start list=lt,tq,dt <k>_runs= <k>_rev= tq_minr= dt_jump= <k>_route=x:y;… done=lt:n,…`, `pb_stop`. Status thêm `pb pbphase pbfloor pbdeaths roses`.
   Sự kiện `! train pb start|enter|run|floor|revive|confirm|reward|exit|end <k> ok|fail …|skip <k> lý do|finish|stop`. vlcmhost gửi `! hostclose` khi đóng theo ý người dùng.
 
 - Phu Tử: hỏi NPC `MainChar_MsgSenderProxy.send_10129(1738)`; tắt ám khí `Fight_MsgSenderProxy.send_52005(0/1)` (trạng thái `mainCharData.anqiInfo.isOpen`);

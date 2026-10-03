@@ -1083,6 +1083,10 @@ static bool PbReady(const Acc* a, int i, std::wstring* why = nullptr) {
     }
     return true;
 }
+static bool PbAnyOn(const Acc* a) {
+    for (int i = 0; i < NPB; ++i) if (a->cfg.pbOn[i]) return true;
+    return false;
+}
 static bool PbWanted(const Acc* a) {
     for (int i = 0; i < NPB; ++i) if (a->cfg.pbOn[i] && !PbRowFinished(a, i) && PbReady(a, i)) return true;
     return false;
@@ -1150,7 +1154,9 @@ static std::wstring PbArgs(Acc* a) {
         std::wstring r = ReadRoute(i);
         if (!r.empty()) extra += L" " + k + L"_route=" + r;
     }
-    return L"list=" + list + extra + L" done=" + done + FightArgs(c);
+    std::wstring on;                                            // moi pho ban dang tick (pb_list: chi thoat pho ban dang lam khi bo tick dung no)
+    for (int i = 0; i < NPB; ++i) if (c.pbOn[i]) on += (on.empty() ? L"" : L",") + std::wstring(PB_KEY[i]);
+    return L"list=" + list + L" on=" + on + extra + L" done=" + done + FightArgs(c);
 }
 
 /** o trang thai canh "Danh quai": Chua lam / Dang cho / Dang lam / Dang nghi / Ve thanh */
@@ -1927,6 +1933,12 @@ static void OnReply(Acc* a, const std::wstring& tag, const std::wstring& r) {
         if (!ok) CloseFallback(a);
     } else if (tag == L"pbstart") {
         if (!ok) AddLog(a, L"Phó bản - Lỗi: " + r);
+    } else if (tag == L"pblist") {
+        if (!ok && r.find(L"không hỗ trợ") != std::wstring::npos) {   // VlcmLoader.swf ban cu: dung roi chay lai voi danh sach moi
+            AddLog(a, L"Phó bản - VlcmLoader.swf chưa có lệnh pb_list (cần bản mới) — dừng rồi chạy lại với danh sách mới");
+            SendCmd(a, L"pbstop", L"pb_stop");
+            a->pbStartAt = GetTickCount() - 7000;
+        } else if (!ok) AddLog(a, L"Phó bản - Lỗi: " + r);
     } else if (tag == L"pause") {
         if (!ok) AddLog(a, L"Tạm dừng tiện ích lỗi: " + r);
     } else if (tag == L"start" || tag == L"stop") {
@@ -1984,6 +1996,8 @@ static void PbEvent(Acc* a, const std::wstring& d) {
     else if (cmd == L"confirm") AddLog(a, L"Phó bản - Đã xác nhận: " + rest);
     else if (cmd == L"finish") { AddLog(a, L"Phó bản - Đã đi hết các phó bản đã chọn"); a->st.state = L"idle"; a->pbStartAt = GetTickCount(); }
     else if (cmd == L"start") AddLog(a, L"Phó bản - Bắt đầu: " + rest);
+    else if (cmd == L"list") AddLog(a, L"Phó bản - Cập nhật danh sách: " + rest);
+    else if (cmd == L"unpick") AddLog(a, nm + L"Đã bỏ tick phó bản đang làm — thoát phó bản này");
     else if (cmd == L"stop") AddLog(a, L"Phó bản - Dừng: " + rest);
     else AddLog(a, L"Phó bản - " + d);
     if (a == Sel()) RefreshTrainState();
@@ -2127,7 +2141,8 @@ static void Tick() {
         if (a->active && a->st.inGame) {
             bool want = PbWanted(a);
             if (want && a->st.state != L"pb" && now - a->pbStartAt > 10000) { a->pbStartAt = now; SendCmd(a, L"pbstart", L"pb_start " + PbArgs(a)); }
-            else if (!want && a->st.state == L"pb" && now - a->pbStartAt > 10000) { a->pbStartAt = now; SendCmd(a, L"pbstop", L"pb_stop"); }
+            // khong tick pho ban nao: SWF tu thoat pho ban dang lam (pb_list) roi bao "pb finish", khong dung ngang
+            else if (!want && a->st.state == L"pb" && now - a->pbStartAt > 10000 && PbAnyOn(a)) { a->pbStartAt = now; SendCmd(a, L"pbstop", L"pb_stop"); }
         }
         // game bao mat ket noi ma 90s chua vao lai: dang nhap lai trong cua so dang mo
         if (a->gameDiscoAt && !a->st.inGame && now - a->gameDiscoAt > 90000 && a->active) {
@@ -3074,8 +3089,10 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 a->cfg.pbOn[i] = Checked(id);
                 a->pbSkip[i].clear();
                 AddLog(a, std::wstring(L"Phó bản ") + PB_NAME[i] + (a->cfg.pbOn[i] ? L" - Bật" : L" - Tắt"));
-                if (a->connected && a->st.state == L"pb") SendCmd(a, L"pbstop", L"pb_stop");   // chay lai voi danh sach moi
-                a->pbStartAt = GetTickCount() - 7000;
+                if (a->connected && a->st.state == L"pb") {     // dang chay: chi cap nhat danh sach, pho ban dang lam lam het luot
+                    SendCmd(a, L"pblist", L"pb_list " + PbArgs(a));
+                    a->pbStartAt = GetTickCount();
+                } else a->pbStartAt = GetTickCount() - 7000;
                 RefreshTrainState();
             }
             return 0;

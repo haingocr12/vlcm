@@ -220,6 +220,7 @@ public class VlcmTrain {
             case "bag_names":   return listBagNames();
             case "pb_start":    return pbStart(parseArgs(args));
             case "pb_stop":     pbStop("dừng theo lệnh"); return "ok";
+            case "pb_list":     return pbList(parseArgs(args));
         }
         return "err lệnh không hỗ trợ: " + cmd;
     }
@@ -1106,7 +1107,6 @@ public class VlcmTrain {
     private static const PB_FLOOR_STUCK:int = 90000;      // một tầng 90s không tiến -> thoát, thất bại
     private static const PB_RUN_MAX:int = 25 * 60000;     // cả lượt tối đa 25 phút
     private static const PB_JUMP_GAP:int = 500;
-    private static const PB_JUMP_MAPS:Array = [20062, 20067];
     private static const PB_JUMP_OFS:Array = [[3,0],[-3,0],[0,3],[0,-3],[2,2],[2,-2],[-2,2],[-2,-2],[4,1],[-4,1],[1,4],[1,-4]];
     private static const PB_DEF:Object = {
         lt: { name: "Liên Trảm", maps: [20032],
@@ -1136,7 +1136,9 @@ public class VlcmTrain {
     private var _pbGateAt:int = -1;           // 10300 cổng mở (thời điểm)
     private var _pbDoneAt:int = -1;           // 10726
     private var _pbJumpDir:int = 0, _pbJumpAt:int = 0;
+    private var _noJumpLog:Object = {};       // map đã báo "game không cho nhảy"
     private var _pbWait:Object = {};
+    private var _pbCur:String = null;         // phó bản đang làm (giữ cả lúc về thành giữa 2 lượt): làm hết lượt rồi mới sang phó bản khác
     private var _pbRoseTry:int = 0, _pbRoseWait:int = 0;          // key -> đã báo chờ (điều kiện liên trảm chưa đạt) trong danh sách này
     // ---- liên trảm (12001 [short số chuỗi, 0 = đứt]; thời gian giữ chuỗi = mainCharData.lianzhanInfo.time ms, càng cao càng ngắn)
     private var _lzHooked:Boolean = false;
@@ -1146,9 +1148,9 @@ public class VlcmTrain {
     private var _fast:Boolean = false;        // cứu chuỗi: ra chiêu dồn dập hơn
     private var _pbNoBoss:Boolean = false;    // Liên Trảm lúc tích chuỗi: không đánh boss (giết boss là hết phó bản)
 
-    private function pbStart(kv:Object):String {
-        if (me() == null || curMap() < 0) return "err nhân vật chưa vào map";
-        _pbQueue = [];
+    /** danh sách phó bản từ tham số pb_start / pb_list */
+    private function pbParseQueue(kv:Object):Array {
+        var queue:Array = [];
         for each (var key:String in String(kv.list || "").split(",")) {
             if (!PB_DEF[key]) continue;
             var route:Array = PB_DEF[key].route;
@@ -1170,7 +1172,7 @@ public class VlcmTrain {
                 var c4:int = sp.indexOf(":");
                 if (c4 > 0) sroute.push([int(sp.substr(0, c4)), int(sp.substr(c4 + 1))]);
             }
-            _pbQueue.push({ key: key, runs: int(kv[key + "_runs"]), rev: Math.max(0, int(kv[key + "_rev"])),
+            queue.push({ key: key, runs: int(kv[key + "_runs"]), rev: Math.max(0, int(kv[key + "_rev"])),
                             minr: int(kv[key + "_minr"]), jump: kv[key + "_jump"] == "1", route: route, sroute: sroute, r15: r15,
                             bow: kv[key + "_bow"] != "0", farm: int(kv[key + "_farm"]), farmMin: Math.max(1, int(kv[key + "_farmmin"] || 10)),
                             sf: int(kv[key + "_sf"]), nomob: int(kv[key + "_nomob"]), lzc: parseLzCond(kv[key + "_lz"]),
@@ -1179,13 +1181,24 @@ public class VlcmTrain {
                             sk: pbSkillCfg(kv, key),
                             range: Math.max(1, int(kv[key + "_range"] || 99)), afk: kv[key + "_afk"] != "0", bosscount: key == "tq" ? kv[key + "_bosscount"] != "0" : kv[key + "_bosscount"] == "1" });
         }
-        if (_pbQueue.length == 0) return "err chưa chọn phó bản";
-        _pbDone = {};
+        return queue;
+    }
+
+    private static function pbParseDone(kv:Object):Object {
+        var done:Object = {};
         for each (var d:String in String(kv.done || "").split(",")) {
             var c3:int = d.indexOf(":");
-            if (c3 > 0) _pbDone[d.substr(0, c3)] = int(d.substr(c3 + 1));
+            if (c3 > 0) done[d.substr(0, c3)] = int(d.substr(c3 + 1));
         }
-        _pbSkip = {}; _pbWait = {};
+        return done;
+    }
+
+    private function pbStart(kv:Object):String {
+        if (me() == null || curMap() < 0) return "err nhân vật chưa vào map";
+        _pbQueue = pbParseQueue(kv);
+        if (_pbQueue.length == 0) return "err chưa chọn phó bản";
+        _pbDone = pbParseDone(kv);
+        _pbSkip = {}; _pbWait = {}; _pbCur = null;
         applyFightCfg(kv);                                          // kỹ năng / hồi máu / buff / nhặt của bộ đang chọn (trước đây chỉ gửi kèm train_start)
         _emit("train", "pb kỹ năng: " + fightCfgText());
         pbHook();
@@ -1203,8 +1216,47 @@ public class VlcmTrain {
         return "ok pb " + _pbPhase;
     }
 
+    /**
+     * pb_list: panel tick / bỏ tick phó bản trong lúc đang chạy. Chỉ cập nhật danh sách, không dừng phó bản đang làm.
+     *   on=lt,tq,...  mọi phó bản đang tick (kể cả chưa tới giờ / chưa đủ điều kiện)
+     * Phó bản đang làm (cả lúc về thành giữa 2 lượt) vẫn tick: làm tiếp tới hết lượt rồi mới chọn tiếp theo thứ tự danh sách.
+     * Bỏ tick đúng phó bản đang làm: thoát phó bản đó (lượt tính thất bại), rồi sang phó bản kế.
+     */
+    private function pbList(kv:Object):String {
+        if (_state != PB) return pbStart(kv);
+        var queue:Array = pbParseQueue(kv);
+        var on:Array = String(kv.on || kv.list || "").split(",");
+        var cur:String = _pbRun ? _pbRun.key : _pbCur;
+        if (cur && on.indexOf(cur) >= 0) {
+            var has:Boolean = false;
+            for each (var q:Object in queue) if (q.key == cur) { has = true; break; }
+            if (!has && pbCfg(cur)) queue.unshift(pbCfg(cur));      // còn tick nhưng panel tạm bỏ khỏi danh sách (giờ / điều kiện): giữ để làm tiếp
+        }
+        var skip:Object = {}, wait:Object = {};                       // giữ lý do bỏ qua / chờ của phó bản đã có sẵn trong danh sách cũ
+        for each (var q2:Object in queue) if (pbCfg(q2.key)) {
+            if (_pbSkip[q2.key]) skip[q2.key] = _pbSkip[q2.key];
+            if (_pbWait[q2.key]) wait[q2.key] = _pbWait[q2.key];
+        }
+        _pbQueue = queue; _pbSkip = skip; _pbWait = wait;
+        _pbDone = pbParseDone(kv);
+        if (!_pbRun) applyFightCfg(kv);                               // đang trong lượt: giữ bộ kỹ năng của lượt đó
+        _emit("train", "pb list " + _pbQueue.map(function(q3:*, i:int, a:Array):String { return q3.key; }).join(",") + (cur ? " (đang làm " + cur + ")" : ""));
+        if (cur && on.indexOf(cur) < 0) {                             // bỏ tick đúng phó bản đang làm: thoát
+            _pbCur = null;
+            if (_pbRun && (_pbPhase == "in" || _pbPhase == "dead")) {
+                _pbRun.unpick = true;                                 // pbInStep thoát ở nhịp kế (chết thì sau khi hồi sinh)
+            } else if (!_pbRun && (_pbPhase == "open" || _pbPhase == "enter")) {
+                _pbPhase = "town"; _pbAt = getTimer(); _pbTry = 0;
+            }
+            _emit("train", "pb unpick " + cur);
+        }
+        if (_pbQueue.length == 0 && !_pbRun) { _emit("train", "pb finish"); pbStop("không còn phó bản được chọn"); return "ok pb idle"; }
+        return "ok pb " + _pbPhase;
+    }
+
     private function pbStop(why:String):void {
         if (_state == PB) { _state = IDLE; _timer.stop(); }
+        _pbCur = null;
         _fast = false; _pbNoBoss = false;
         afkKill("dừng phó bản");
         ptRestore();
@@ -1293,7 +1345,7 @@ public class VlcmTrain {
         _pbRun = { key: key, cfg: cfg, deaths: 0, start: getTimer(), floor: 0, floorMap: -1, floorAt: getTimer(),
                    ri: 0, lapFound: false, boss: false, quietAt: -1, noTarget: 0, progressAt: getTimer(), moveAt: 0, dwell: 0, exitWalkAt: 0,
                    mobSeenAt: getTimer(), lzMax: 0, lzBreaks: 0, lzGapMax: 0, lzRescues: 0, okWhy: "" };
-        _pbPhase = "in"; _pbAt = getTimer();
+        _pbPhase = "in"; _pbAt = getTimer(); _pbCur = key;
         _pbDoneAt = -1; _pbGateAt = -1; _pbAsk = null;
         ppReset(); _ap = null;
         if (cfg && cfg.sk) {                                             // bộ kỹ năng riêng của phó bản này
@@ -1321,15 +1373,21 @@ public class VlcmTrain {
 
     /** phó bản kế tiếp còn chạy được; null = hết */
     private function pbNextKey():String {
-        for each (var q:Object in _pbQueue) {
-            if (_pbSkip[q.key]) continue;
-            if (q.runs > 0 && int(_pbDone[q.key]) >= q.runs) continue;
-            if (_pbWait[q.key]) continue;
-            var why:String = lzCondFail(q.lzc);
-            if (why) { _pbWait[q.key] = true; _emit("train", "pb wait " + q.key + " " + why); continue; }
-            return q.key;
+        if (_pbCur) {                                                 // phó bản đang làm: làm tiếp tới khi hết lượt / bị bỏ qua / bỏ tick
+            var cq:Object = pbCfg(_pbCur);
+            if (cq && pbKeyOk(cq)) return cq.key;
+            _pbCur = null;
         }
+        for each (var q:Object in _pbQueue) if (pbKeyOk(q)) return q.key;
         return null;
+    }
+    private function pbKeyOk(q:Object):Boolean {
+        if (_pbSkip[q.key]) return false;
+        if (q.runs > 0 && int(_pbDone[q.key]) >= q.runs) return false;
+        if (_pbWait[q.key]) return false;
+        var why:String = lzCondFail(q.lzc);
+        if (why) { _pbWait[q.key] = true; _emit("train", "pb wait " + q.key + " " + why); return false; }
+        return true;
     }
 
     private function pbStep(now:int):void {
@@ -1436,6 +1494,7 @@ public class VlcmTrain {
             return;
         }
         if (_pbDoneAt > 0) { _pbPhase = "reward"; _pbAt = now; _target = null; return; }
+        if (run.unpick) { pbExit("bỏ tick phó bản đang chạy"); return; }
         if (now - run.start > PB_RUN_MAX) { pbExit("quá " + int(PB_RUN_MAX / 60000) + " phút"); return; }
         _fast = false; _pbNoBoss = false;
         if (anyMob()) run.mobSeenAt = now;
@@ -1500,7 +1559,7 @@ public class VlcmTrain {
         }
         if (mob) {
             run.noTgtAt = -1; run.noTarget = 0; run.lapFound = true; run.progressAt = now; run.goingGate = false;
-            if (run.cfg.jump && pbJump(mob, now)) return;              // Doanh Trại: nhảy quanh quái (xen kẽ với đánh)
+            if (run.cfg.jump && pbJump(mob, now)) return;              // Doanh Trại: nhảy quanh quái ở mọi ải game cho nhảy (xen kẽ với đánh)
             fight(now);
             return;
         }
@@ -2245,12 +2304,12 @@ public class VlcmTrain {
     }
 
     /**
-     * Nhảy quanh quái (Doanh Trại, map 20062 / 20067) — như Shift+click của người chơi: MainCharSeachPathManager.charJump.
+     * Nhảy quanh quái (Doanh Trại: mọi ải; Phu Tử: boss trạng thái đặc biệt) — như Shift+click của người chơi: MainCharSeachPathManager.charJump.
      * Điều kiện của game: map cho nhảy, thể lực >= 20, không bị trói; thêm: quái trong 7 ô, cách lần trước >= 0.5s.
      */
-    private function pbJump(mob:Object, now:int, anyMap:Boolean = false):Boolean {
+    private function pbJump(mob:Object, now:int):Boolean {
         var here:int = curMap();
-        if ((!anyMap && PB_JUMP_MAPS.indexOf(here) < 0) || now - _pbJumpAt < PB_JUMP_GAP) return false;
+        if (now - _pbJumpAt < PB_JUMP_GAP) return false;
         var m:Object = me();
         var st:String = m.getStatus();
         if (st == "walk" || st == "jump") return false;
@@ -2258,7 +2317,10 @@ public class VlcmTrain {
             if (m.isJumping() || m.on2Jumping() || m.on3Jumping()) return false;
             if (m.data.isSoft) return false;
             if (Number(gi().mainCharData.attributeInfo.ppNow) < 20) return false;
-            if (_c.MapTransManager && !_c.MapTransManager.getMapRes(here).allowJump) return false;
+            if (_c.MapTransManager && !_c.MapTransManager.getMapRes(here).allowJump) {   // ải game không cho nhảy: bỏ qua, không ép
+                if (!_noJumpLog[here]) { _noJumpLog[here] = true; _emit("train", "info pb map " + here + " game không cho nhảy — ải này không nhảy"); }
+                return false;
+            }
             if (_c.FightManager && !_c.FightManager.isMainCharCanMove()) return false;
         } catch (e:Error) { return false; }
         if (tileDist(m, mob.tile_x, mob.tile_y) > 7) return false;
@@ -2372,7 +2434,7 @@ public class VlcmTrain {
             run.progressAt = now;
             if (support(now)) return;
             if (_target != boss) { _target = boss; _targetSince = now; gi().lockOnChar = boss; }
-            if (run.cfg.jump && ptBossSpecial(boss) && pbJump(boss, now, true)) return;
+            if (run.cfg.jump && ptBossSpecial(boss) && pbJump(boss, now)) return;
             fight(now);
             return;
         }
