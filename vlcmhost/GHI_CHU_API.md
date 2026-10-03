@@ -269,6 +269,12 @@ Doanh Trại dùng chung luồng `pbInStep` với Thiên Quan.
 - Dự kiến: nhấp đúp vào cột "Điều kiện" của dòng hồi máu → ô nhập số ngay trên dòng, Enter/rời ô thì lưu (5–95), Esc hủy;
   lưu xong dùng `SkillSetChanged` → áp dụng ngay (cả đang Đánh quái lẫn đang chạy phó bản, theo 03-10d). Dòng buff không có mức %, nhấp đúp không làm gì.
 
+**Mê Cung chỉ mở thứ 3, 5, 7** (Hain báo 03-10, chờ lệnh sửa)
+- Hain muốn: xem lịch trên máy, ngày khác thứ 3/5/7 thì không chạy Mê Cung.
+- Dự kiến: panel `PbReady` thêm điều kiện ngày (giờ máy, `GetLocalTime`, wDayOfWeek 2/4/6); ngày đóng: dòng Mê Cung hiện "Không mở hôm nay",
+  không gửi `mc` trong `list=`; đang trong Mê Cung lúc qua nửa đêm thì vẫn làm nốt lượt. Nên làm dạng bảng ngày mở cho mọi phó bản (mặc định Mê Cung 3/5/7, còn lại mọi ngày).
+- Còn hỏi: game đổi ngày lúc 0h hay giờ khác (vd 5h)? Giờ máy có khớp giờ server không?
+
 **Phu Tử**
 - E1. Quái theo thứ tự có thể kẹt vĩnh viễn (giống B1): `run.ptTarget` được gán lại sau khi bị bỏ, và lúc tìm không bỏ qua `_black`. Sửa: bỏ con đó, tìm con cùng tên khác; chỉ còn đúng con đó thì đi tuần một vòng rồi thử lại.
 - E2. Giết đúng con theo thứ tự không tính kill, không chờ đồ rơi. Sửa: tính kill + chờ đồ rơi 1 giây.
