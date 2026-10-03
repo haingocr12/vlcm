@@ -1600,14 +1600,17 @@ static bool LoginAcc(Acc* a) {
 
 // ------------------------------------------------------------ an / hien cua so game, CPU, hieu nang
 
+struct HostWndCtx { std::wstring pre; HWND h; };
+// ham rieng (khong dung lambda): MinGW 32-bit khong doi lambda sang WNDENUMPROC (__stdcall)
+static BOOL CALLBACK HostWndEnum(HWND h, LPARAM lp) {
+    HostWndCtx* c = (HostWndCtx*)lp;
+    wchar_t t[256]; GetWindowTextW(h, t, 256);
+    if (_wcsnicmp(t, c->pre.c_str(), c->pre.size()) == 0) { c->h = h; return FALSE; }
+    return TRUE;
+}
 static HWND HostWindow(const Acc* a) {
-    struct Ctx { std::wstring pre; HWND h; } ctx{ L"VLCM Host - " + a->id + L" ", nullptr };
-    EnumWindows([](HWND h, LPARAM lp) -> BOOL {
-        Ctx* c = (Ctx*)lp;
-        wchar_t t[256]; GetWindowTextW(h, t, 256);
-        if (_wcsnicmp(t, c->pre.c_str(), c->pre.size()) == 0) { c->h = h; return FALSE; }
-        return TRUE;
-    }, (LPARAM)&ctx);
+    HostWndCtx ctx{ L"VLCM Host - " + a->id + L" ", nullptr };
+    EnumWindows(HostWndEnum, (LPARAM)&ctx);
     return ctx.h;
 }
 static void SendCmd(Acc* a, const std::wstring& tag, const std::wstring& line);
