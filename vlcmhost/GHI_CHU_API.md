@@ -194,6 +194,17 @@ Doanh Trại dùng chung luồng `pbInStep` với Thiên Quan.
 - D2. Phòng thần bí: đi các điểm và ra cổng không kiểm kẹt. Sửa: dùng `goPoint`/`badPoint` và ra cổng như D1.
 - D3. Treo đánh ở tầng chỉ định: không chờ đồ rơi sau khi giết. Sửa: thêm `dropWaiting`.
 
+**Mê Cung — leo tầng / treo quái** (Hain báo 03-10, chờ lệnh sửa)
+- Hain muốn:
+  - leo tầng **không đánh quái**;
+  - tới đúng tầng chỉ định mới **ra giữa map** treo quái;
+  - option mới: treo tới khi **đạt mốc liên trảm chỉ định** thì ngưng treo, đi tiếp hoàn thành Mê Cung.
+- Code hiện tại (`mcStep`):
+  - leo tầng vẫn đánh quái trong 5 ô ("tự vệ") và nhặt túi trong 20 ô;
+  - ở tầng treo: đánh quái trong phạm vi, hết quái thì đi theo tuyến `mc_route` (thường rỗng), không ra giữa map;
+  - chỉ dừng treo theo số phút (`mc_farmmin`).
+- Câu hỏi chờ chốt (xem cuối mục).
+
 **Phu Tử**
 - E1. Quái theo thứ tự có thể kẹt vĩnh viễn (giống B1): `run.ptTarget` được gán lại sau khi bị bỏ, và lúc tìm không bỏ qua `_black`. Sửa: bỏ con đó, tìm con cùng tên khác; chỉ còn đúng con đó thì đi tuần một vòng rồi thử lại.
 - E2. Giết đúng con theo thứ tự không tính kill, không chờ đồ rơi. Sửa: tính kill + chờ đồ rơi 1 giây.
@@ -222,6 +233,9 @@ Mô tả gốc:
 2. Nhịp nhảy Doanh Trại: nhảy lúc rảnh, hay giãn 2–3 giây?
 3. Mê Cung: gửi 10051 tại cửa rồi mới kết luận cửa sai?
 4. Làm B1–B3, C1, D1–D3, E1–E2 và thứ tự phó bản trong cùng một bản?
+5. Mê Cung leo tầng không đánh: bỏ cả đánh tự vệ (quái đánh mình / chặn cửa)? Có còn nhặt túi gần không? Ải chuột tầng 15 và phòng thần bí giữ như cũ?
+6. Mê Cung "giữa map": tọa độ cụ thể từng tầng, một tọa độ chung, hay tool tự lấy tâm bản đồ?
+7. Mê Cung treo theo liên trảm: dừng khi đạt mốc X **hoặc** hết M phút (cái nào tới trước), hay bỏ hẳn giới hạn phút? Ở giữa map đứng yên chờ quái tới, hay đánh quái trong phạm vi tìm quái?
 
 ## 12. Phó bản [đọc mã game; mock]
 
