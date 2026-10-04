@@ -1,6 +1,10 @@
 ﻿# GHI CHÚ API — VLCM (Mộng Chí Tôn, TePayLink)
 
-Cập nhật: 03-10-2026 (bản 03-10e: không bỏ quái aggro, bỏ giới hạn giờ tool tự đặt; 03-10d: thứ tự phó bản, nhảy mọi ải Doanh Trại theo tầm game, Mê Cung leo tầng/treo quái, áp dụng cài đặt ngay, đi tuần không bị buff chặn; còn lại trong danh sách chờ sửa). Gửi file này (hoặc cả vlcmhost_train.zip) ở đầu mỗi cuộc trò chuyện mới.
+Cập nhật: 04-10-2026 (bản **03-10f**). Gửi file này (hoặc cả zip) ở đầu mỗi cuộc trò chuyện mới.
+Mã nguồn + lịch sử từng bản: repo `haingocr12/vlcm`, nhánh `claude/optimistic-ride-x7dg9o`, thư mục `vlcmhost/` (commit đầu = bản gốc 02-10j).
+Build: SWF bằng Royale mxmlc (như build_swf.bat, nén CWS); panel bằng MinGW-w64 x86_64 (GCC 13, `-static`, nhúng manifest Common-Controls 6 + dpiAware) hoặc build_vlcmpanel.bat (VS).
+Các bản trong phiên 03/04-10: 03-10a thứ tự phó bản + nhảy mọi ải DT; 03-10b/d tầm nhảy DT theo game (đã bỏ chế độ thử 500); 03-10c Mê Cung leo tầng/treo quái;
+03-10d áp dụng cài đặt ngay + đi tuần không bị buff chặn; 03-10e không bỏ quái aggro + bỏ giới hạn giờ tool tự đặt; 03-10f chẩn đoán lỗi tick + tự gỡ.
 Ký hiệu: **[đã xác minh]** = chạy được trên game thật hoặc đọc rõ trong mã TGame; **[mock]** = mới chạy trên game giả lập;
 **[đoán]** = suy ra, chưa kiểm tra.
 
@@ -297,6 +301,8 @@ Doanh Trại dùng chung luồng `pbInStep` với Thiên Quan.
 - 03-10f: log lỗi kèm bước đang chạy `tại [pb:in>mc>phòng15>chuột>đánh>chiêu]` + 3 hàm đầu của stack (nếu Flash cho);
   cùng một lỗi lặp 3 giây → `errRecover` (bỏ mục tiêu / túi / lệnh đi / hàng chờ chiêu / mục tiêu chuột) để chạy tiếp; `isDead(null)` không còn ném lỗi.
 - Chờ Hain gửi dòng lỗi mới (có phần `tại [...]`) để sửa tận gốc.
+- Hain (04-10): tầng 15 chỉ có một loại quái (chuột) → **đề xuất** bỏ dò tên "chuột" ở tầng 15, coi mọi quái tầng 15 là chuột (DT và phòng thần bí giữ dò tên).
+  Bước dò tên (`pbMice`) bọc try nên tự nó không ném #1009; nghi luồng ải chuột (`pbMouseStep`: chọn chuột → chờ rơi → `pbPickStep` → `support` → `fight`). **Chưa sửa — chờ Hain chốt** (làm luôn hay gộp sau khi có log).
 
 **Phu Tử**
 - E1. Quái theo thứ tự có thể kẹt vĩnh viễn (giống B1): `run.ptTarget` được gán lại sau khi bị bỏ, và lúc tìm không bỏ qua `_black`. Sửa: bỏ con đó, tìm con cùng tên khác; chỉ còn đúng con đó thì đi tuần một vòng rồi thử lại.
